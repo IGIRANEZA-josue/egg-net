@@ -12,33 +12,61 @@ export type CartItem = {
 };
 
 const KEY = "egghub_cart";
+const EMPTY: CartItem[] = [];
+
+// Cached snapshot so useSyncExternalStore gets a stable reference.
+let cachedRaw: string | null | undefined;
+let cachedItems: CartItem[] = EMPTY;
 
 function notify() {
   window.dispatchEvent(new Event("egghub-cart"));
 }
 
+function readRaw(): string | null {
+  try {
+    return window.localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function getCart(): CartItem[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(KEY);
-  return raw ? (JSON.parse(raw) as CartItem[]) : [];
+  if (typeof window === "undefined") return EMPTY;
+  const raw = readRaw();
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    try {
+      const parsed = raw ? (JSON.parse(raw) as CartItem[]) : EMPTY;
+      cachedItems = Array.isArray(parsed) ? parsed : EMPTY;
+    } catch {
+      cachedItems = EMPTY;
+    }
+  }
+  return cachedItems;
 }
 
 function saveCart(items: CartItem[]) {
-  localStorage.setItem(KEY, JSON.stringify(items));
+  const raw = JSON.stringify(items);
+  try {
+    window.localStorage.setItem(KEY, raw);
+  } catch {
+    // storage blocked: keep the in-memory snapshot so the session still works
+  }
+  cachedRaw = raw;
+  cachedItems = items;
   notify();
 }
 
 // Add a product (or increase its quantity). Returns an error message if not possible.
 export function addToCart(item: Omit<CartItem, "quantity">, quantity = 1): string | null {
-  const cart = getCart();
-  const existing = cart.find((c) => c.productId === item.productId);
+  const cart = [...getCart()];
+  const index = cart.findIndex((c) => c.productId === item.productId);
+  const existing = index >= 0 ? cart[index] : undefined;
   const newQty = (existing ? existing.quantity : 0) + quantity;
   if (newQty > item.stock) return `Only ${item.stock} available in stock.`;
 
   if (existing) {
-    existing.quantity = newQty;
-    existing.stock = item.stock;
-    existing.price = item.price;
+    cart[index] = { ...existing, quantity: newQty, stock: item.stock, price: item.price };
   } else {
     cart.push({ ...item, quantity });
   }
@@ -47,14 +75,14 @@ export function addToCart(item: Omit<CartItem, "quantity">, quantity = 1): strin
 }
 
 export function updateQuantity(productId: number, quantity: number) {
-  const cart = getCart();
-  const item = cart.find((c) => c.productId === productId);
-  if (!item) return;
+  const cart = [...getCart()];
+  const index = cart.findIndex((c) => c.productId === productId);
+  if (index < 0) return;
   if (quantity <= 0) {
     saveCart(cart.filter((c) => c.productId !== productId));
     return;
   }
-  item.quantity = Math.min(quantity, item.stock);
+  cart[index] = { ...cart[index], quantity: Math.min(quantity, cart[index].stock) };
   saveCart(cart);
 }
 

@@ -39,7 +39,7 @@ export default function RegisterPage() {
           <div><label>Full name</label><input value={form.name} onChange={(e) => update("name", e.target.value)} required /></div>
           <div><label>Email</label><input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} required /></div>
           <div><label>Phone</label><input value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="07XXXXXXXX" /></div>
-          <div><label>Password (min 6 characters)</label><input type="password" value={form.password} onChange={(e) => update("password", e.target.value)} required minLength={6} /></div>
+          <div><label>Password (min 8 characters)</label><input type="password" value={form.password} onChange={(e) => update("password", e.target.value)} required minLength={8} maxLength={128} autoComplete="new-password" /></div>
           <button className="btn btn-primary" disabled={loading}>{loading ? "Creating..." : "Register"}</button>
         </form>
         <p className="muted" style={{ marginTop: "1rem" }}>

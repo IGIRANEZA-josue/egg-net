@@ -1,11 +1,24 @@
 // POST /api/upload  (ADMIN only)
-// Simple LOCAL image upload: the file is saved in public/uploads and served as /uploads/<name>.
-// No external service (like Cloudinary) is needed. For production you could swap this
-// function to upload to Cloudinary/S3 and return the remote URL instead.
+// Stores the image in PostgreSQL (table "images") and returns /api/images/:id.
+// This works on serverless hosts like Vercel where the filesystem is read-only
+// and ephemeral. To use Cloudinary/S3 instead, swap this handler — the rest of
+// the app only cares about the returned URL.
 import { NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { db } from "@/db";
+import { images } from "@/db/schema";
 import { requireAdmin, errorResponse } from "@/lib/auth";
+
+const MAX_BYTES = 3 * 1024 * 1024; // 3MB
+
+// Validate by magic bytes, not the (client-controlled) MIME header.
+// SVG is intentionally NOT allowed: it can carry scripts.
+function sniffMime(buf: Buffer): string | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (buf.length >= 12 && buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  if (buf.length >= 6 && ["GIF87a", "GIF89a"].includes(buf.subarray(0, 6).toString("ascii"))) return "image/gif";
+  return null;
+}
 
 export async function POST(request: Request) {
   const admin = await requireAdmin(request);
@@ -15,19 +28,17 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("image");
     if (!(file instanceof File)) return errorResponse("No image file received.");
-    if (!file.type.startsWith("image/")) return errorResponse("Only image files are allowed.");
-    if (file.size > 3 * 1024 * 1024) return errorResponse("Image must be smaller than 3MB.");
-
-    const ext = path.extname(file.name) || ".jpg";
-    const fileName = `product-${Date.now()}${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
+    if (file.size > MAX_BYTES) return errorResponse("Image must be smaller than 3MB.");
+    if (file.size === 0) return errorResponse("The image file is empty.");
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(uploadDir, fileName), bytes);
+    const mime = sniffMime(bytes);
+    if (!mime) return errorResponse("Only JPEG, PNG, WebP or GIF images are allowed.");
 
-    return NextResponse.json({ url: `/uploads/${fileName}` });
-  } catch {
+    const [image] = await db.insert(images).values({ mime, data: bytes }).returning({ id: images.id });
+    return NextResponse.json({ url: `/api/images/${image.id}` });
+  } catch (err) {
+    console.error("POST /api/upload failed:", err);
     return errorResponse("Upload failed.", 500);
   }
 }

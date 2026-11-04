@@ -1,6 +1,26 @@
+# dependencies / build output
 node_modules
 .next
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# environment & secrets
 .env
+.env.*
+!.env.example
+
+# local development database (embedded PostgreSQL data dir)
+.pgdata
+
+# user uploads (legacy local-disk uploads; images now live in the database)
 public/uploads/*
 !public/uploads/.gitkeep
+
+# logs & misc
 *.log
+.vercel
+.DS_Store
+.pgtest

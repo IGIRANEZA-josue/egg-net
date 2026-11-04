@@ -1,6 +1,6 @@
 "use client";
-// Small helper to show a "your order is being delivered" notice at the top of the site.
-// It is saved in localStorage (like the cart) so it can appear on every page after checkout.
+// "Your order is on its way" notice shown at the top of the site after checkout.
+// Saved in localStorage (like the cart) so it can appear on every page.
 
 export type DeliveryNotice = {
   id: number;
@@ -10,17 +10,50 @@ export type DeliveryNotice = {
 
 const KEY = "egghub_delivery_notice";
 
+let cachedRaw: string | null | undefined;
+let cachedNotice: DeliveryNotice | null = null;
+
+function readRaw(): string | null {
+  try {
+    return window.localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function saveDeliveryNotice(notice: DeliveryNotice) {
-  localStorage.setItem(KEY, JSON.stringify(notice));
+  const raw = JSON.stringify(notice);
+  try {
+    window.localStorage.setItem(KEY, raw);
+  } catch {
+    // storage blocked — the in-memory copy still works for this session
+  }
+  cachedRaw = raw;
+  cachedNotice = notice;
   window.dispatchEvent(new Event("egghub-delivery"));
 }
 
 export function getDeliveryNotice(): DeliveryNotice | null {
-  const raw = localStorage.getItem(KEY);
-  return raw ? (JSON.parse(raw) as DeliveryNotice) : null;
+  if (typeof window === "undefined") return null;
+  const raw = readRaw();
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    try {
+      cachedNotice = raw ? (JSON.parse(raw) as DeliveryNotice) : null;
+    } catch {
+      cachedNotice = null;
+    }
+  }
+  return cachedNotice;
 }
 
 export function clearDeliveryNotice() {
-  localStorage.removeItem(KEY);
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    // ignore
+  }
+  cachedRaw = null;
+  cachedNotice = null;
   window.dispatchEvent(new Event("egghub-delivery"));
 }

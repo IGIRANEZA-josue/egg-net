@@ -3,45 +3,59 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, rwf, getSavedUser } from "@/lib/client/api";
+import { api, rwf } from "@/lib/client/api";
+import { useUser, useCartItems } from "@/lib/client/hooks";
 import LoadingScreen from "@/components/LoadingScreen";
-import { getCart, cartSubtotal, clearCart, previewDiscount, type CartItem } from "@/lib/client/cart";
+import { cartSubtotal, clearCart, previewDiscount } from "@/lib/client/cart";
 import { saveDeliveryNotice } from "@/lib/client/notice";
 
 const PROVINCES = ["Kigali City", "Northern Province", "Southern Province", "Eastern Province", "Western Province"];
 
+type Promotion = { name: string; type: string; value: number } | null;
+
 export default function CheckoutPage() {
   const router = useRouter();
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [promotion, setPromotion] = useState<{ name: string; type: string; value: number } | null>(null);
+  const user = useUser();
+  const items = useCartItems();
+  const [promotion, setPromotion] = useState<Promotion>(null);
   const [deliveryFee, setDeliveryFee] = useState(1000);
   const [paymentMethod, setPaymentMethod] = useState("mobile_money");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [needLogin, setNeedLogin] = useState(false);
+  const [placed, setPlaced] = useState(false);
   const [delivery, setDelivery] = useState({
     fullName: "", phone: "", province: "Kigali City", district: "", sector: "", address: "", instructions: "",
   });
+  const [prefilledFor, setPrefilledFor] = useState<number | null>(null);
 
   useEffect(() => {
-    const user = getSavedUser();
-    if (!user) { router.push("/login"); return; }
-    const cart = getCart();
-    if (cart.length === 0) { router.push("/cart"); return; }
-    setItems(cart);
-    // Pre-fill from the profile
+    if (user === null) router.replace("/login?next=/checkout");
+    // after placing the order the cart is cleared — don't bounce away then
+    else if (user && items.length === 0 && !placed) router.replace("/cart");
+  }, [user, items.length, placed, router]);
+
+  // Pre-fill from the profile once per user, without overwriting typed input.
+  // (Render-time state adjustment — the pattern React recommends over effects.)
+  if (user && prefilledFor !== user.id) {
+    setPrefilledFor(user.id);
     setDelivery((d) => ({ ...d, fullName: user.name, phone: user.phone || "", address: user.address || "" }));
-    api<{ promotion: typeof promotion; deliveryFee: number }>("/api/promotions/active")
-      .then((d) => { setPromotion(d.promotion); setDeliveryFee(d.deliveryFee); })
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ promotion: Promotion; deliveryFee: number }>("/api/promotions/active")
+      .then((d) => { if (!cancelled) { setPromotion(d.promotion); setDeliveryFee(d.deliveryFee); } })
       .catch(() => {});
-  }, [router]);
+    return () => { cancelled = true; };
+  }, []);
 
   const subtotal = cartSubtotal(items);
   const discount = previewDiscount(subtotal, promotion);
   const total = subtotal + deliveryFee - discount;
 
   function update(field: string, value: string) {
-    setDelivery({ ...delivery, [field]: value });
+    setDelivery((d) => ({ ...d, [field]: value }));
   }
 
   async function placeOrder(e: React.FormEvent) {
@@ -58,11 +72,10 @@ export default function CheckoutPage() {
           paymentMethod,
         },
       });
-      // show the green "your order is being delivered" message at the top of the site
-      const user = getSavedUser();
       if (user) {
         saveDeliveryNotice({ id: data.order.id, orderNumber: data.order.orderNumber, customerId: user.id });
       }
+      setPlaced(true);
       clearCart();
       router.push(`/orders/${data.order.id}?placed=1`);
     } catch (err) {
@@ -73,6 +86,8 @@ export default function CheckoutPage() {
       setLoading(false);
     }
   }
+
+  if (!user || (items.length === 0 && !placed)) return <LoadingScreen label="Preparing checkout" full />;
 
   return (
     <div className="page container">
@@ -90,8 +105,8 @@ export default function CheckoutPage() {
         <div className="card form">
           <h3>Delivery Information</h3>
           <div className="form-row">
-            <div><label>Full name</label><input value={delivery.fullName} onChange={(e) => update("fullName", e.target.value)} required /></div>
-            <div><label>Phone number</label><input value={delivery.phone} onChange={(e) => update("phone", e.target.value)} required placeholder="07XXXXXXXX" /></div>
+            <div><label>Full name</label><input value={delivery.fullName} onChange={(e) => update("fullName", e.target.value)} required maxLength={120} /></div>
+            <div><label>Phone number</label><input value={delivery.phone} onChange={(e) => update("phone", e.target.value)} required placeholder="07XXXXXXXX" maxLength={20} inputMode="tel" /></div>
           </div>
           <div className="form-row">
             <div>
@@ -100,20 +115,20 @@ export default function CheckoutPage() {
                 {PROVINCES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
-            <div><label>District</label><input value={delivery.district} onChange={(e) => update("district", e.target.value)} required placeholder="e.g. Gasabo" /></div>
+            <div><label>District</label><input value={delivery.district} onChange={(e) => update("district", e.target.value)} required placeholder="e.g. Gasabo" maxLength={120} /></div>
           </div>
           <div className="form-row">
-            <div><label>Sector</label><input value={delivery.sector} onChange={(e) => update("sector", e.target.value)} required placeholder="e.g. Remera" /></div>
-            <div><label>Delivery address</label><input value={delivery.address} onChange={(e) => update("address", e.target.value)} required placeholder="Street / house / landmark" /></div>
+            <div><label>Sector</label><input value={delivery.sector} onChange={(e) => update("sector", e.target.value)} required placeholder="e.g. Remera" maxLength={120} /></div>
+            <div><label>Delivery address</label><input value={delivery.address} onChange={(e) => update("address", e.target.value)} required placeholder="Street / house / landmark" maxLength={300} /></div>
           </div>
-          <div><label>Additional instructions (optional)</label><textarea value={delivery.instructions} onChange={(e) => update("instructions", e.target.value)} /></div>
+          <div><label>Additional instructions (optional)</label><textarea value={delivery.instructions} onChange={(e) => update("instructions", e.target.value)} maxLength={500} /></div>
 
           <h3 style={{ marginTop: "1rem" }}>Payment Method</h3>
           <label className="checkbox"><input type="radio" name="pay" checked={paymentMethod === "mobile_money"} onChange={() => setPaymentMethod("mobile_money")} /> Mobile Money (MTN / Airtel)</label>
           <label className="checkbox"><input type="radio" name="pay" checked={paymentMethod === "cash"} onChange={() => setPaymentMethod("cash")} /> Cash on Delivery</label>
           <label className="checkbox"><input type="radio" name="pay" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} /> Card</label>
           <div className="alert alert-warning" style={{ marginTop: 8 }}>
-            Development mode: no real payment provider is connected. Mobile Money and Card use a test flow that marks the order as paid. Cash stays pending until delivery.
+            Demo mode: no real payment provider is connected yet. Mobile Money and Card use a test flow that marks the order as paid. Cash stays pending until delivery.
           </div>
         </div>
 

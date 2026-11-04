@@ -1,42 +1,31 @@
 "use client";
-// Green banner at the very top of the page: "Your order is being delivered."
+// Banner at the very top of the page: "Your order is on its way."
 // Appears after a logged-in customer places an order, and disappears once the
-// order is delivered (or when the customer closes it).
-import { useEffect, useState } from "react";
+// order is delivered/cancelled (or when the customer closes it).
+import { useEffect } from "react";
 import Link from "next/link";
-import { api, getSavedUser } from "@/lib/client/api";
-import { getDeliveryNotice, clearDeliveryNotice, type DeliveryNotice } from "@/lib/client/notice";
+import { api } from "@/lib/client/api";
+import { clearDeliveryNotice } from "@/lib/client/notice";
+import { useUser, useDeliveryNotice } from "@/lib/client/hooks";
 
 export default function DeliveryBanner() {
-  const [notice, setNotice] = useState<DeliveryNotice | null>(null);
-
-  useEffect(() => {
-    function refresh() {
-      const saved = getDeliveryNotice();
-      const user = getSavedUser();
-      // only show it to the customer who placed the order
-      if (saved && user && saved.customerId === user.id) setNotice(saved);
-      else setNotice(null);
-    }
-    refresh();
-    window.addEventListener("egghub-delivery", refresh);
-    window.addEventListener("egghub-auth", refresh);
-    return () => {
-      window.removeEventListener("egghub-delivery", refresh);
-      window.removeEventListener("egghub-auth", refresh);
-    };
-  }, []);
+  const user = useUser();
+  const saved = useDeliveryNotice();
+  // only show it to the customer who placed the order
+  const notice = saved && user && saved.customerId === user.id ? saved : null;
 
   // hide the banner automatically once the order is delivered or cancelled
   useEffect(() => {
     if (!notice) return;
+    let cancelled = false;
     api<{ order: { orderStatus: string } }>(`/api/orders/${notice.id}`)
       .then((data) => {
-        if (data.order.orderStatus === "delivered" || data.order.orderStatus === "cancelled") {
+        if (!cancelled && (data.order.orderStatus === "delivered" || data.order.orderStatus === "cancelled")) {
           clearDeliveryNotice();
         }
       })
       .catch(() => {}); // if it fails, just keep showing the notice
+    return () => { cancelled = true; };
   }, [notice]);
 
   if (!notice) return null;

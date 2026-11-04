@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, rwf, formatDate, getSavedUser, type User } from "@/lib/client/api";
+import { api, rwf, formatDate, type User } from "@/lib/client/api";
+import { useUser } from "@/lib/client/hooks";
 import StatusBadge from "@/components/StatusBadge";
 import OrderTracker from "@/components/OrderTracker";
 import LoadingScreen from "@/components/LoadingScreen";
@@ -15,21 +16,23 @@ type Order = {
 
 export default function CustomerDashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const user = useUser();
+  const [orders, setOrders] = useState<Order[] | null>(null);
 
   useEffect(() => {
-    const saved = getSavedUser();
-    if (!saved) { router.replace("/login"); return; }
-    setUser(saved);
-    api<{ orders: Order[] }>("/api/orders")
-      .then((d) => setOrders(d.orders))
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  }, [router]);
+    if (user === null) router.replace("/login");
+  }, [user, router]);
 
-  if (loading || !user) return <LoadingScreen label="Loading your dashboard" />;
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    api<{ orders: Order[] }>("/api/orders")
+      .then((d) => { if (!cancelled) setOrders(d.orders); })
+      .catch(() => { if (!cancelled) setOrders([]); });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  if (!user || orders === null) return <LoadingScreen label="Loading your dashboard" />;
 
   const totalSpent = orders
     .filter((o) => o.orderStatus !== "cancelled")

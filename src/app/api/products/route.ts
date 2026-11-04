@@ -1,25 +1,47 @@
 // GET  /api/products   -> public list (supports ?search= and ?inStock=true)
+//                          ?all=true (include unavailable) is ADMIN-only
 // POST /api/products   -> ADMIN only: create a product
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { products } from "@/db/schema";
-import { desc } from "drizzle-orm";
-import { requireAdmin, errorResponse } from "@/lib/auth";
+import { desc, eq, and, gt, ilike, or, SQL } from "drizzle-orm";
+import { requireAdmin, getUserFromRequest, errorResponse } from "@/lib/auth";
 import { readProductBody } from "@/lib/validate-product";
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const search = (searchParams.get("search") || "").toLowerCase();
-  const inStock = searchParams.get("inStock") === "true";
-  const all = searchParams.get("all") === "true"; // admin uses this to see unavailable items too
+  try {
+    const { searchParams } = new URL(request.url);
+    const search = (searchParams.get("search") || "").trim().slice(0, 100);
+    const inStock = searchParams.get("inStock") === "true";
+    const wantAll = searchParams.get("all") === "true";
 
-  let list = await db.select().from(products).orderBy(desc(products.createdAt));
+    const conditions: SQL[] = [];
 
-  if (!all) list = list.filter((p) => p.isAvailable);
-  if (search) list = list.filter((p) => p.name.toLowerCase().includes(search) || (p.description || "").toLowerCase().includes(search));
-  if (inStock) list = list.filter((p) => p.stock > 0);
+    if (wantAll) {
+      // Only admins may see unavailable products.
+      const user = await getUserFromRequest(request);
+      if (!user || user.role !== "admin") return errorResponse("Admin access only.", 403);
+    } else {
+      conditions.push(eq(products.isAvailable, true));
+    }
+    if (inStock) conditions.push(gt(products.stock, 0));
+    if (search) {
+      const pattern = `%${search.replace(/[%_]/g, "\\$&")}%`;
+      conditions.push(or(ilike(products.name, pattern), ilike(products.description, pattern))!);
+    }
 
-  return NextResponse.json({ products: list });
+    const list = await db
+      .select()
+      .from(products)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(products.createdAt))
+      .limit(500);
+
+    return NextResponse.json({ products: list });
+  } catch (err) {
+    console.error("GET /api/products failed:", err);
+    return errorResponse("We could not load products. Please try again.", 503);
+  }
 }
 
 export async function POST(request: Request) {
@@ -27,12 +49,15 @@ export async function POST(request: Request) {
   if (admin instanceof NextResponse) return admin;
 
   try {
-    const result = readProductBody(await request.json());
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") return errorResponse("Invalid request body.");
+    const result = readProductBody(body);
     if (result.error || !result.data) return errorResponse(result.error || "Invalid data.");
 
     const [product] = await db.insert(products).values(result.data).returning();
     return NextResponse.json({ product }, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error("POST /api/products failed:", err);
     return errorResponse("Could not create product.", 500);
   }
 }

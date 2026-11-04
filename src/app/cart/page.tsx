@@ -4,27 +4,30 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CartItemRow from "@/components/CartItemRow";
-import { api, rwf, getSavedUser } from "@/lib/client/api";
-import { getCart, cartSubtotal, previewDiscount, type CartItem } from "@/lib/client/cart";
+import { api, rwf } from "@/lib/client/api";
+import { useUser, useCartItems } from "@/lib/client/hooks";
+import { cartSubtotal, previewDiscount } from "@/lib/client/cart";
 
 type Promotion = { name: string; type: string; value: number } | null;
 
 export default function CartPage() {
   const router = useRouter();
-  const [items, setItems] = useState<CartItem[]>([]);
+  const user = useUser();
+  const items = useCartItems();
   const [promotion, setPromotion] = useState<Promotion>(null);
   const [deliveryFee, setDeliveryFee] = useState(1000);
 
   useEffect(() => {
-    if (!getSavedUser()) { router.push("/login"); return; }
-    const refresh = () => setItems(getCart());
-    refresh();
-    window.addEventListener("egghub-cart", refresh);
+    if (user === null) router.replace("/login?next=/cart");
+  }, [user, router]);
+
+  useEffect(() => {
+    let cancelled = false;
     api<{ promotion: Promotion; deliveryFee: number }>("/api/promotions/active")
-      .then((d) => { setPromotion(d.promotion); setDeliveryFee(d.deliveryFee); })
+      .then((d) => { if (!cancelled) { setPromotion(d.promotion); setDeliveryFee(d.deliveryFee); } })
       .catch(() => {});
-    return () => window.removeEventListener("egghub-cart", refresh);
-  }, [router]);
+    return () => { cancelled = true; };
+  }, []);
 
   const subtotal = cartSubtotal(items);
   const discount = previewDiscount(subtotal, promotion);

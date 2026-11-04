@@ -1,9 +1,13 @@
-// The secret used to sign login tokens is stored in the DATABASE.
+// The secret used to sign login tokens.
 //
-// Why not only .env? The hosting environment can recreate the .env file, and if
-// JWT_SECRET disappears the app would sign and check tokens with a different
-// secret -> every logged-in customer suddenly gets "Please login to continue."
-// The database survives restarts, so sessions stay valid.
+// Priority:
+//   1. JWT_SECRET from the environment (recommended in production — rotate it
+//      there and every instance picks it up)
+//   2. a strong secret generated ONCE and stored in the database, so sessions
+//      survive restarts/redeploys even when no env secret is configured
+//
+// Older secrets (DB rows jwt_secret_accept_*, JWT_SECRET_FALLBACK) are still
+// accepted when verifying, so rotating the secret does not log everyone out.
 import crypto from "crypto";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
@@ -16,26 +20,39 @@ let cached: Promise<Secrets> | null = null;
 async function load(): Promise<Secrets> {
   const rows = await db.select().from(settings).where(like(settings.key, "jwt_secret%"));
 
-  // 1. The main secret (created once, then reused forever)
-  let sign = rows.find((r) => r.key === "jwt_secret")?.value;
+  // 1. Prefer the environment secret when configured.
+  let sign = process.env.JWT_SECRET || "";
+
+  // 2. Otherwise reuse (or create once) the database-stored secret.
+  const stored = rows.find((r) => r.key === "jwt_secret")?.value;
   if (!sign) {
-    sign = process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
-    await db.insert(settings).values({ key: "jwt_secret", value: sign });
+    sign = stored || crypto.randomBytes(32).toString("hex");
+    if (!stored) {
+      await db
+        .insert(settings)
+        .values({ key: "jwt_secret", value: sign })
+        .onConflictDoNothing();
+    }
   }
 
-  // 2. Older secrets that are still accepted for checking (rows named
-  //    jwt_secret_accept_1, jwt_secret_accept_2, ...) so nobody is logged out.
+  // Secrets still accepted for verification (rotation grace period).
   const accepted = rows.filter((r) => r.key !== "jwt_secret").map((r) => r.value);
+  const fromEnv = [process.env.JWT_SECRET_FALLBACK].filter(Boolean) as string[];
+  const old = stored && stored !== sign ? [stored] : [];
 
-  // 3. Anything configured in the environment is accepted too.
-  const fromEnv = [process.env.JWT_SECRET, process.env.JWT_SECRET_FALLBACK].filter(Boolean) as string[];
-
-  const verify = [sign, ...accepted, ...fromEnv].filter((value, index, all) => all.indexOf(value) === index);
+  const verify = [sign, ...old, ...accepted, ...fromEnv].filter(
+    (value, index, all) => all.indexOf(value) === index
+  );
   return { sign, verify };
 }
 
 function secrets() {
-  if (!cached) cached = load();
+  if (!cached) {
+    cached = load().catch((err) => {
+      cached = null; // don't cache failures (e.g. DB briefly unreachable)
+      throw err;
+    });
+  }
   return cached;
 }
 

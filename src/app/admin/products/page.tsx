@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, rwf } from "@/lib/client/api";
-import type { Product } from "@/components/ProductCard";
-import EggMark from "@/components/EggMark";
+import { ProductThumb, type Product } from "@/components/ProductCard";
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -44,7 +43,7 @@ export default function AdminProductsPage() {
           <tbody>
             {products.map((p) => (
               <tr key={p.id}>
-                <td>{p.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.image} alt="" className="thumb" /> : <div className="thumb product-image-placeholder" style={{ color: "var(--ink)" }}><EggMark size={22} /></div>}</td>
+                <td><ProductThumb product={p} className="thumb" /></td>
                 <td><strong>{p.name}</strong>{p.discount > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>-{p.discount}%</span>}</td>
                 <td>{p.packageSize} eggs</td>
                 <td>{rwf(p.price)}</td>
