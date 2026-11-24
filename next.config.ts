@@ -9,7 +9,10 @@ const CSP = [
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
   "connect-src 'self'",
-  "frame-ancestors 'none'",
+  // The /devices page embeds the site in same-origin phone frames to demo the
+  // responsive layout. Nothing else may frame us: 'self' excludes every
+  // external site, which is what frame-ancestors 'none' was protecting.
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
@@ -19,7 +22,8 @@ const securityHeaders = [
   { key: "Content-Security-Policy", value: CSP },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "X-Frame-Options", value: "DENY" },
+  // SAMEORIGIN (not DENY) for the same reason as frame-ancestors 'self' above.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];

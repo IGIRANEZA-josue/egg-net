@@ -597,3 +597,223 @@ html, body { overflow-x: hidden; }
   white-space: nowrap;
 }
 .nav-must-change:hover { background: var(--ink); color: var(--paper, #f4f2ea); }
+
+/* =========================================================
+   RESPONSIVE SAFETY NET
+   Rules that apply at every width. They exist so a single
+   unlucky element cannot create horizontal scrolling on a
+   phone, without changing how anything looks on desktop.
+   ========================================================= */
+
+/* Images keep their proportions when they shrink. Written with :where() so the
+   rule carries zero specificity and can never override a component's own height
+   (product cards crop to 210px, cart thumbnails 72px, the hero fills its band). */
+:where(img, svg, video, canvas) { max-width: 100%; }
+:where(img) { height: auto; }
+
+/* Long words, URLs and emails wrap instead of pushing the page wide. Applied to
+   block elements only, so inline text still breaks at spaces first. */
+p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .card, .alert { overflow-wrap: anywhere; }
+
+/* A field label is a block, but must not break mid-word at 320px ("Full name"
+   inside a 100px form row). Keep labels at normal word wrapping. */
+label { overflow-wrap: normal; }
+
+/* Wrapping is the default for text; only buttons keep nowrap. */
+.btn { white-space: normal; }
+
+/* A card is never a fixed box: its content decides its height. */
+.card { min-width: 0; }
+
+/* Focus is always visible and never clipped by a scroll container. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Respect the OS "reduce motion" setting for the small hover lifts. */
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover { transform: none; }
+}
+
+/* ---------- Short landscape phones (e.g. 667x375, 740x360) ---------- */
+@media (max-height: 480px) and (orientation: landscape) {
+  /* Nav behaviour is decided by width, in the blocks above. A landscape phone
+     between 900 and 932px wide keeps the desktop row, which is fine because the
+     panel below is not used at that width either. Only vertical rhythm changes. */
+  .nav-right .btn { padding: 0.4rem 0.7rem; font-size: 0.74rem; }
+  .hero { padding-top: 1.5rem; }
+  .hero h1 { font-size: clamp(2rem, 6vh, 2.6rem); margin-bottom: 0.75rem; }
+  .hero p { margin-bottom: 1rem; }
+  .hero-media { height: 170px; margin-top: 1.25rem; }
+  .section { padding: 2.5rem 0; }
+}
+
+/* ---------- Admin toolbars: fixed widths become flexible ---------- */
+.admin-search { width: 100%; max-width: 260px; }
+.admin-filter { width: 100%; max-width: 200px; }
+.admin-stock-input { width: 72px; }
+@media (max-width: 640px) {
+  .admin-search, .admin-filter { max-width: none; }
+  .admin-header > input, .admin-header > select { flex: 1 1 100%; }
+}
+
+/* =========================================================
+   DEVICE LAB  (/devices)
+   A live iframe of the real site inside a phone frame.
+   ========================================================= */
+.devices-page { padding-top: 2.5rem; padding-bottom: 4rem; }
+.devices-head { max-width: 62ch; }
+.devices-intro { margin-top: 0.6rem; }
+
+.devices-toolbar {
+  display: flex; flex-wrap: wrap; gap: 1rem 1.25rem; align-items: flex-end;
+  margin: 1.75rem 0 1.25rem; padding: 1rem 1.15rem;
+  border: 1px solid var(--ink); background: var(--paper-2);
+}
+.devices-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1 1 210px; min-width: 0; }
+.devices-field label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.devices-field select { width: 100%; }
+.devices-readout {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; flex: 1 1 100%;
+  padding-top: 0.85rem; border-top: 1px solid var(--hairline);
+}
+.devices-open-link { font-size: 0.76rem; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+
+.devices-alert {
+  margin-bottom: 1.25rem; padding: 0.75rem 1rem; font-size: 0.82rem;
+  background: #fbeae4; border-left: 3px solid #a3402a; color: #6d2416;
+}
+.devices-alert code { font-family: var(--font-mono); font-size: 0.72rem; }
+
+/* ---- stage ---- */
+.device-stage { display: flex; flex-wrap: wrap; gap: 2.5rem; align-items: flex-start; }
+.device-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; flex: 0 1 auto; }
+.device-scaler { position: relative; flex: none; }
+.device-scaler .phone-frame { position: absolute; top: 0; left: 0; transform-origin: top left; }
+
+.phone-frame {
+  padding: 24px 12px; border-radius: 40px;
+  background: linear-gradient(160deg, #3a3833, #14130f 55%, #2b2925);
+  box-shadow:
+    0 0 0 2px #0c0b09 inset,
+    0 0 0 8px #2a2823,
+    0 26px 55px -18px rgba(0, 0, 0, 0.55);
+}
+.phone-speaker {
+  position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+  width: 54px; height: 5px; border-radius: 999px; background: #0a0908;
+}
+.phone-screen { width: 100%; height: 100%; overflow: hidden; border-radius: 24px; background: var(--paper); }
+.phone-screen iframe { display: block; border: 0; background: var(--paper); }
+.phone-home {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 96px; height: 4px; border-radius: 999px; background: #4a473f;
+}
+.device-caption { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; font-size: 0.8rem; text-align: center; }
+.device-caption span { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted); }
+
+/* ---- side panel ---- */
+.device-side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 0.85rem; }
+.devices-side-title {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500;
+}
+.device-others { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.device-mini {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  padding: 0.7rem 0.75rem; min-height: 44px;
+  border: 1px solid var(--hairline); background: var(--paper);
+  font: inherit; color: inherit; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.device-mini:hover { border-color: var(--ink); transform: translateY(-2px); }
+.device-mini.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.device-mini-screen { display: block; border: 2px solid var(--ink); border-radius: 6px; background: var(--paper-2); }
+.device-mini-name { font-size: 0.72rem; font-weight: 600; }
+.device-mini-size { font-family: var(--font-mono); font-size: 0.58rem; color: var(--muted); }
+
+.devices-quick { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip {
+  min-height: 36px; padding: 0 0.7rem; border: 1px solid var(--hairline);
+  background: var(--paper); font: inherit; font-size: 0.72rem; color: var(--ink);
+  cursor: pointer; display: inline-flex; align-items: center;
+}
+.chip:hover { border-color: var(--ink); }
+.chip.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.devices-summary { margin-top: 0.35rem; padding: 0.9rem 1rem; border: 1px solid var(--hairline); background: var(--paper-2); }
+.devices-summary .muted { font-size: 0.8rem; }
+.devices-actions { margin-top: 0.6rem; }
+.devices-actions .btn { width: 100%; }
+.devices-progress { margin-top: 0.65rem; height: 6px; background: var(--paper); border: 1px solid var(--hairline); overflow: hidden; }
+.devices-progress > div { height: 100%; background: var(--ink); transition: width 0.25s linear; }
+.devices-progress-text { margin-top: 0.45rem; font-family: var(--font-mono); font-size: 0.64rem; color: var(--muted); }
+
+/* ---- matrix ---- */
+.devices-matrix { margin-top: 3.5rem; }
+.devices-matrix-head {
+  display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; justify-content: space-between;
+  border-bottom: 1px solid var(--ink); padding-bottom: 0.75rem;
+}
+.devices-matrix-head .section-title { margin: 0; font-size: clamp(1.6rem, 4vw, 2.4rem); }
+.devices-matrix-note { margin-top: 0.75rem; max-width: 72ch; font-size: 0.84rem; }
+.segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--ink); }
+.segmented button {
+  min-height: 40px; padding: 0 0.8rem; border: 0; border-right: 1px solid var(--hairline);
+  background: var(--paper); font: inherit; font-size: 0.72rem; cursor: pointer;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button.active { background: var(--ink); color: var(--paper); }
+
+.devices-table { width: 100%; margin-top: 1rem; }
+.devices-table th { font-size: 0.58rem; white-space: nowrap; }
+.devices-table td { vertical-align: middle; font-size: 0.8rem; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.devices-table tr.selected { background: var(--paper-2); }
+.devices-link {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600; font-size: 0.82rem;
+  color: var(--ink); cursor: pointer; text-align: left; text-decoration: underline;
+  text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+.devices-path { display: block; font-family: var(--font-mono); font-size: 0.6rem; color: var(--muted); }
+.devices-status-cell { text-align: center; }
+.devices-open { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; }
+
+.status-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 24px; padding: 0 0.4rem; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.62rem;
+  background: var(--paper-2); color: var(--muted); border: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.status-dot.ok { background: #e8f2e5; border-color: #3f6b3a; color: #2c4a28; }
+.status-dot.overflow { background: #fbeae4; border-color: #a3402a; color: #7d2c1b; }
+.status-dot.checking { border-style: dashed; }
+.status-dot.idle { color: var(--muted); }
+.devices-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.85rem; font-size: 0.72rem; }
+.devices-legend-sep { margin: 0 0.3rem; }
+
+/* the sweep frame: measured, never seen, and never scrollable-into */
+.devices-probe {
+  position: fixed; top: 0; left: -200vw; width: 1px; height: 1px;
+  overflow: hidden; visibility: hidden; pointer-events: none;
+  contain: strict;
+}
+
+@media (max-width: 900px) {
+  .device-stage { gap: 1.75rem; justify-content: center; }
+  .device-side { flex: 1 1 100%; }
+  .device-others, .devices-quick { justify-content: center; }
+  .devices-toolbar { gap: 0.75rem; }
+}
+@media (max-width: 640px) {
+  .devices-page { padding-top: 1.5rem; padding-bottom: 2.5rem; }
+  .devices-table th, .devices-table td { font-size: 0.7rem; }
+  .devices-table td { padding-left: 0.35rem; padding-right: 0.35rem; }
+  .segmented { width: 100%; }
+  .segmented button { flex: 1; }
+  .devices-matrix { margin-top: 2.5rem; }
+}

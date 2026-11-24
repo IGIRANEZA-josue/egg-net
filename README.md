@@ -18,7 +18,9 @@ EggHub Rwanda is an online egg-selling and management platform. The **admin** ma
 
 **Admin**: dashboard (revenue collected vs pending, orders, customers, products, low stock, pending orders), add/edit/delete products, image upload (local), stock & availability management, low-stock warnings, orders list + status/payment updates with cancellation reasons, customers list + temporary password reset, sales statistics with a simple chart, discounts & promotions.
 
-**Security**: bcrypt password hashing (cost 12), JWT auth in an **HttpOnly cookie**, role checks on every admin API, server-side recalculation of prices / discounts / delivery / stock at checkout, per-account and per-IP rate limiting on login/register, input validation shared between client and server, parameterised SQL everywhere, security headers (CSP, HSTS, frame-deny).
+**Security**: bcrypt password hashing (cost 12), JWT auth in an **HttpOnly cookie**, role checks on every admin API, server-side recalculation of prices / discounts / delivery / stock at checkout, per-account and per-IP rate limiting on login/register, input validation shared between client and server, parameterised SQL everywhere, security headers (CSP, HSTS, same-origin framing only).
+
+**Responsive**: one layout that works from a 320px phone to a wide desktop, with the mobile menu, stacked grids, scrolling tables and a built-in device checker at [`/devices`](http://localhost:3000/devices).
 
 ---
 
@@ -287,6 +289,40 @@ database server or Docker is needed. It covers the pricing math, authorization, 
 revenue aggregation, password reset, and the rate limiter.
 
 CI (`.github/workflows/ci.yml`) runs `lint → typecheck → test → build` on every pull request.
+
+---
+
+## Responsive layout and the device checker
+
+The site is designed mobile-first in width terms: it never needs a separate mobile
+version. The whole responsive layer is plain CSS in `src/app/globals.css`.
+
+| Width | What changes |
+| --- | --- |
+| 320–380px | Two-column header (brand + burger), compact buttons, smaller invoice padding, narrower table minimum |
+| ≤ 560px | Product/feature grids go to one column, two-column forms stack, cart rows move totals to their own line |
+| ≤ 640px | 16px form fields (stops iOS zooming on focus), 44px quantity buttons, card grids tighten |
+| ≤ 900px | Desktop nav links become the hamburger panel; 4- and 3-column grids become two; two-column page layouts stack; tables scroll inside `.table-wrap` |
+| 901px+ | Full horizontal navigation and the original multi-column layouts |
+
+**Mobile navigation.** Below 900px the links move into a panel under the header. It
+opens with the burger, closes with the burger, the ✕, `Escape`, a tap on the dimmed
+page behind it, or a tap on any link. The page behind it cannot scroll while it is
+open. Every link and the logout button are at least 44px tall.
+
+**Checking it yourself — `/devices`.** A phone frame on the page loads the *real*
+routes in an iframe at a real device width (320, 360, 390, 430 and 768px), so what
+you see is the site, not a mock-up. Two checks run in the visitor's own browser:
+
+- the open page is measured for horizontal overflow as you switch pages and devices;
+- **Check every page** walks all 23 screens at all 5 widths (115 combinations) one
+  at a time and fills in the results table.
+
+Nothing is hard-coded: a row shows "✓" only if that page actually fitted that width
+in a browser. On a very narrow screen the frame is scaled down and the page says so.
+
+To allow the same-origin frames, `X-Frame-Options` is `SAMEORIGIN` and the CSP says
+`frame-ancestors 'self'`. External sites still cannot frame the app.
 
 ---
 

@@ -72,14 +72,16 @@ export default function AdminSalesPage() {
           {data.topProducts.length === 0 ? (
             <p className="muted">No paid sales yet.</p>
           ) : (
-            <table>
-              <thead><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead>
-              <tbody>
-                {data.topProducts.map((p) => (
-                  <tr key={p.productId}><td>{p.name}</td><td>{p.quantity}</td><td>{rwf(p.revenue)}</td></tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {data.topProducts.map((p) => (
+                    <tr key={p.productId}><td>{p.name}</td><td>{p.quantity}</td><td>{rwf(p.revenue)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

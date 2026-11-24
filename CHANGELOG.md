@@ -3,6 +3,47 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — responsive / mobile pass
+
+The site already had a responsive layer; this pass makes it hold up on real
+handsets and adds a way to prove it.
+
+### Added
+
+- **`/devices` — live device checker.** The real routes render inside phone frames
+  (320, 360, 390, 430, 768px) as same-origin iframes, so the layout under test is the
+  layout shipped. A probe measures `scrollWidth` inside each frame and names the
+  offending elements; "Check every page" sweeps all 23 screens at all 5 widths (115
+  combinations) and reports which fit. Results are measured per visit, not hard-coded.
+- Short-landscape phone handling (e.g. 667×375) for the hero and the nav panel.
+
+### Fixed
+
+- **The mobile menu stayed open after tapping the page you were already on.** The
+  menu closed by watching for a pathname change, which never happens in that case.
+  It now closes on every link tap, on `Escape`, and on a tap on the dimmed backdrop
+  (new), and the page behind it no longer scrolls while it is open.
+- **Tables without a scroll container**: admin sales ("Most Ordered Products") and the
+  invoice line items could widen the whole page; both now scroll inside `.table-wrap`.
+- **Inline fixed widths** in admin toolbars (`260px` search, `200px` filter, `80px`
+  stock input) are now flexible and full-width on phones.
+- **`overflow-x: hidden` on `<body>`** was masking broken layouts and silently turning
+  `<body>` into a scroll container (which breaks `position: sticky` on the header). It
+  is now `overflow-x: clip` on `<html>` only, and genuinely overflowing pages are
+  reported by `/devices` instead of being cropped.
+- Tap targets: the burger is 44×44 and the delivery-banner close button grew from
+  ~20px to 44×44. The header pill shrinks below 420px so the row stays on one line.
+- Product image sizing is now explicit per component, so a slow-loading image cannot
+  collapse its card.
+
+### Changed
+
+- `X-Frame-Options: DENY` → `SAMEORIGIN`, CSP `frame-ancestors 'none'` → `'self'`.
+  Required by the same-origin device checker; external framing is still refused.
+- Nav panel uses `dvh` so a mobile browser toolbar cannot hide the last link.
+
+---
+
 ## Unreleased — production hardening
 
 A pass that closes the gap between "works as a demo" and "safe in front of paying

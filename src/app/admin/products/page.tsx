@@ -57,7 +57,7 @@ export default function AdminProductsPage() {
                 <td>{rwf(p.price)}</td>
                 <td>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input type="number" min={0} defaultValue={p.stock} style={{ width: 80 }} onBlur={(e) => { const v = Number(e.target.value); if (v !== p.stock) save(p, { stock: v }); }} />
+                    <input type="number" min={0} defaultValue={p.stock} className="admin-stock-input" onBlur={(e) => { const v = Number(e.target.value); if (v !== p.stock) save(p, { stock: v }); }} />
                     {p.stock === 0 ? <span className="stock-out">Out</span> : p.stock <= 5 ? <span className="stock-low">Low</span> : null}
                   </div>
                 </td>

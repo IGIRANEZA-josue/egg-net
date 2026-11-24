@@ -91,12 +91,14 @@ export default function LoginPage() {
         {DEMO_ENABLED && (
           <div className="demo-credentials">
             <span className="mono">Demo accounts — one click</span>
+            <div className="table-wrap">
             <table>
               <tbody>
                 <tr><td>Admin</td><td>{DEMO_ADMIN_EMAIL}</td><td>{DEMO_ADMIN_PASSWORD || "(set NEXT_PUBLIC_DEMO_ADMIN_PASSWORD)"}</td></tr>
                 <tr><td>Customer</td><td>{DEMO_CUSTOMER_EMAIL}</td><td>{DEMO_CUSTOMER_PASSWORD || "(set NEXT_PUBLIC_DEMO_CUSTOMER_PASSWORD)"}</td></tr>
               </tbody>
             </table>
+            </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               <button type="button" className="btn btn-outline btn-sm" disabled={loading || !DEMO_ADMIN_PASSWORD} onClick={() => doLogin(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)}>
                 Login as demo admin
