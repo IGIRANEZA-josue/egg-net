@@ -1,49 +1,93 @@
 // GET    /api/products/:id  -> public product details
 // PUT    /api/products/:id  -> ADMIN: edit product
-// DELETE /api/products/:id  -> ADMIN: delete product
+// DELETE /api/products/:id  -> ADMIN: delete product (soft-deletes when referenced)
 import { NextResponse } from "next/server";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { products } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { products, orderItems, reviews } from "@/db/schema";
 import { requireAdmin, errorResponse } from "@/lib/auth";
 import { readProductBody } from "@/lib/validate-product";
+import { withApi, readJson, ApiError } from "@/lib/api-handler";
+import { parseId } from "@/lib/parse-id";
 
-type Params = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function GET(_request: Request, { params }: Params) {
-  const { id } = await params;
-  const [product] = await db.select().from(products).where(eq(products.id, Number(id)));
+export const GET = withApi<Params>(async ({ params }) => {
+  const id = parseId(params.id);
+  if (id === null) return errorResponse("Product not found.", 404);
+
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), isNull(products.deletedAt)));
   if (!product) return errorResponse("Product not found.", 404);
   return NextResponse.json({ product });
-}
+});
 
-export async function PUT(request: Request, { params }: Params) {
+export const PUT = withApi<Params>(async ({ request, params, log }) => {
   const admin = await requireAdmin(request);
   if (admin instanceof NextResponse) return admin;
 
-  const { id } = await params;
-  try {
-    const result = readProductBody(await request.json());
-    if (result.error || !result.data) return errorResponse(result.error || "Invalid data.");
+  const id = parseId(params.id);
+  if (id === null) return errorResponse("Product not found.", 404);
 
+  const body = await readJson(request);
+  const result = readProductBody(body);
+  if (result.error || !result.data) return errorResponse(result.error || "Invalid data.");
+
+  try {
     const [product] = await db
       .update(products)
       .set({ ...result.data, updatedAt: new Date() })
-      .where(eq(products.id, Number(id)))
+      .where(and(eq(products.id, id), isNull(products.deletedAt)))
       .returning();
     if (!product) return errorResponse("Product not found.", 404);
     return NextResponse.json({ product });
-  } catch {
-    return errorResponse("Could not update product.", 500);
+  } catch (error) {
+    log("product update failed", error);
+    throw new ApiError("Could not update product.", 500);
   }
-}
+});
 
-export async function DELETE(request: Request, { params }: Params) {
+export const DELETE = withApi<Params>(async ({ request, params, log }) => {
   const admin = await requireAdmin(request);
   if (admin instanceof NextResponse) return admin;
 
-  const { id } = await params;
-  const [deleted] = await db.delete(products).where(eq(products.id, Number(id))).returning();
-  if (!deleted) return errorResponse("Product not found.", 404);
-  return NextResponse.json({ message: "Product deleted." });
-}
+  const id = parseId(params.id);
+  if (id === null) return errorResponse("Product not found.", 404);
+
+  try {
+    // A product that appears on an order or a review must survive: deleting it
+    // used to orphan both. Hide it instead so history and invoices stay intact.
+    const [referencedByOrder] = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .where(eq(orderItems.productId, id))
+      .limit(1);
+    const [referencedByReview] = await db
+      .select({ id: reviews.id })
+      .from(reviews)
+      .where(eq(reviews.productId, id))
+      .limit(1);
+
+    if (referencedByOrder || referencedByReview) {
+      const [hidden] = await db
+        .update(products)
+        .set({ isAvailable: false, deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(products.id, id), isNull(products.deletedAt)))
+        .returning();
+      if (!hidden) return errorResponse("Product not found.", 404);
+      return errorResponse(
+        "This product has order history and cannot be deleted. It has been marked unavailable instead.",
+        409
+      );
+    }
+
+    const [deleted] = await db.delete(products).where(eq(products.id, id)).returning({ id: products.id });
+    if (!deleted) return errorResponse("Product not found.", 404);
+    return NextResponse.json({ message: "Product deleted." });
+  } catch (error) {
+    log("product delete failed", error);
+    throw new ApiError("Could not delete product.", 500);
+  }
+});

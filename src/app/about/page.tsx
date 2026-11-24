@@ -1,11 +1,13 @@
 // ABOUT PAGE
+import { DELIVERY_RADIUS_KM, PICKUP } from "@/lib/fulfilment";
+
 export default function AboutPage() {
   return (
     <div className="page container" style={{ maxWidth: 800 }}>
       <h1 className="page-title">About EggHub Rwanda</h1>
       <div style={{ height: "clamp(220px, 32vw, 380px)", overflow: "hidden", marginBottom: "2.5rem", WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, #000 25%, #000 100%)", maskImage: "linear-gradient(to bottom, transparent 0%, #000 25%, #000 100%)" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/delivery-halftone.jpg" alt="Delivery rider carrying egg crates" style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(1) contrast(1.06)", mixBlendMode: "multiply" }} />
+        <img src="/images/delivery-halftone.svg" alt="Halftone illustration of an egg crate on a delivery bike" width={900} height={1200} style={{ width: "100%", height: "100%", objectFit: "cover", filter: "grayscale(1) contrast(1.06)", mixBlendMode: "multiply" }} />
       </div>
       <div className="card">
         <p>
@@ -21,8 +23,8 @@ export default function AboutPage() {
         <ul>
           <li>Fresh, quality eggs every time</li>
           <li>Simple ordering and clear prices in RWF</li>
-          <li>Reliable delivery to your sector</li>
-          <li>Honest order tracking from placement to delivery</li>
+          <li>Delivery within {DELIVERY_RADIUS_KM} km of {PICKUP.name}, and collection there beyond that</li>
+          <li>Honest order tracking from placement to delivery or collection</li>
         </ul>
       </div>
     </div>

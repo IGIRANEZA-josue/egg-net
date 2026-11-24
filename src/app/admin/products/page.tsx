@@ -44,13 +44,20 @@ export default function AdminProductsPage() {
           <tbody>
             {products.map((p) => (
               <tr key={p.id}>
-                <td>{p.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.image} alt="" className="thumb" /> : <div className="thumb product-image-placeholder" style={{ color: "var(--ink)" }}><EggMark size={22} /></div>}</td>
+                <td>
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image} alt={p.name} className="thumb" />
+                  ) : (
+                    <div className="thumb product-image-placeholder" style={{ color: "var(--ink)" }}><EggMark size={22} /></div>
+                  )}
+                </td>
                 <td><strong>{p.name}</strong>{p.discount > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>-{p.discount}%</span>}</td>
                 <td>{p.packageSize} eggs</td>
                 <td>{rwf(p.price)}</td>
                 <td>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    <input type="number" min={0} defaultValue={p.stock} style={{ width: 80 }} onBlur={(e) => { const v = Number(e.target.value); if (v !== p.stock) save(p, { stock: v }); }} />
+                    <input type="number" min={0} defaultValue={p.stock} className="admin-stock-input" onBlur={(e) => { const v = Number(e.target.value); if (v !== p.stock) save(p, { stock: v }); }} />
                     {p.stock === 0 ? <span className="stock-out">Out</span> : p.stock <= 5 ? <span className="stock-low">Low</span> : null}
                   </div>
                 </td>

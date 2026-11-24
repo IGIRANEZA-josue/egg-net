@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getSavedUser, clearAuth, type User } from "@/lib/client/api";
+import { getSavedUser, logout as endSession, type User } from "@/lib/client/api";
 import { cartCount } from "@/lib/client/cart";
 import EggMark from "@/components/EggMark";
 
@@ -29,16 +29,35 @@ export default function Navbar() {
     };
   }, []);
 
-  useEffect(() => setOpen(false), [pathname]);
-
-  function logout() {
-    clearAuth();
+  async function logout() {
+    // Expires the HttpOnly cookie on the server, then clears the cached profile.
+    await endSession();
     router.push("/login");
   }
 
+  // Close the menu when a link is tapped. Tapping the page you are already on
+  // does not change the pathname, so relying on the pathname alone left the
+  // menu open over the page.
+  const closeMenu = () => setOpen(false);
+
+  // Escape closes it, and the page behind must not scroll while it is open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   const link = (href: string, label: string) => (
     <li key={href}>
-      <Link href={href} className={pathname === href ? "active" : ""}>{label}</Link>
+      <Link href={href} className={pathname === href ? "active" : ""} onClick={closeMenu}>{label}</Link>
     </li>
   );
 
@@ -50,7 +69,7 @@ export default function Navbar() {
           EggHub<sup>®</sup>
         </Link>
 
-        <ul className={`nav-links ${open ? "open" : ""}`}>
+        <ul id="primary-navigation" className={`nav-links ${open ? "open" : ""}`}>
           {!user && (
             <>
               {link("/", "Home")}
@@ -81,17 +100,24 @@ export default function Navbar() {
             </>
           )}
 
-          {/* Login / Register live in the right corner, but stay reachable in the mobile menu */}
+          {/* The top bar hides Login/Register below 900px to save room, so they
+              stay reachable here on phones. */}
           {!user && (
             <>
-              <li className="nav-mobile-only"><Link href="/login">Login</Link></li>
-              <li className="nav-mobile-only"><Link href="/register">Register</Link></li>
+              <li className="nav-mobile-only"><Link href="/login" onClick={closeMenu}>Login</Link></li>
+              <li className="nav-mobile-only"><Link href="/register" onClick={closeMenu}>Register</Link></li>
             </>
           )}
-          {user && <li><button onClick={logout}>Logout</button></li>}
+          {user && <li><button onClick={() => { closeMenu(); void logout(); }}>Logout</button></li>}
         </ul>
 
         <div className="nav-spacer" />
+
+        {user?.mustChangePassword && (
+          <Link href="/profile" className="nav-must-change" title="Change your password">
+            Change password
+          </Link>
+        )}
 
         <div className="nav-right">
           {user && <span className="nav-user">{user.name.split(" ")[0]}</span>}
@@ -99,15 +125,26 @@ export default function Navbar() {
           {!user && <Link href="/register" className="nav-user">Register</Link>}
           {!user && <Link href="/products" className="btn btn-primary btn-sm btn-arrow">Order Now</Link>}
           {user?.role === "customer" && (
-            <Link href="/cart" className="btn btn-primary btn-sm btn-arrow">
+            <Link href="/cart" className="btn btn-primary btn-sm btn-arrow nav-action-cart">
               Cart{count > 0 && <span className="nav-badge">{count}</span>}
             </Link>
           )}
-          {user?.role === "admin" && <Link href="/admin/products/new" className="btn btn-primary btn-sm btn-arrow">Add Product</Link>}
+          {user?.role === "admin" && <Link href="/admin/products/new" className="btn btn-primary btn-sm btn-arrow nav-action-add">Add Product</Link>}
         </div>
 
-        <button className="nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu">☰</button>
+        <button
+          className={`nav-toggle ${open ? "is-open" : ""}`}
+          onClick={() => setOpen(!open)}
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          aria-controls="primary-navigation"
+        >
+          {open ? "✕" : "☰"}
+        </button>
       </div>
+
+      {/* Tapping the dimmed page behind the open menu closes it. */}
+      {open && <button className="nav-backdrop" aria-hidden="true" tabIndex={-1} onClick={closeMenu} />}
     </header>
   );
 }

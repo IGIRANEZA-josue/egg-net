@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveAuth, type User } from "@/lib/client/api";
+import { api, saveUser, type User } from "@/lib/client/api";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -20,8 +20,8 @@ export default function RegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const data = await api<{ token: string; user: User }>("/api/auth/register", { method: "POST", body: form });
-      saveAuth(data.token, data.user);
+      const data = await api<{ user: User }>("/api/auth/register", { method: "POST", body: form });
+      saveUser(data.user);
       router.push("/dashboard");
     } catch (err) {
       setError((err as Error).message);
@@ -36,10 +36,10 @@ export default function RegisterPage() {
         <h1 className="page-title">Create Account</h1>
         {error && <div className="alert alert-error">{error}</div>}
         <form className="form" onSubmit={handleSubmit}>
-          <div><label>Full name</label><input value={form.name} onChange={(e) => update("name", e.target.value)} required /></div>
-          <div><label>Email</label><input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} required /></div>
-          <div><label>Phone</label><input value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="07XXXXXXXX" /></div>
-          <div><label>Password (min 6 characters)</label><input type="password" value={form.password} onChange={(e) => update("password", e.target.value)} required minLength={6} /></div>
+          <div><label htmlFor="reg-name">Full name</label><input id="reg-name" value={form.name} onChange={(e) => update("name", e.target.value)} required /></div>
+          <div><label htmlFor="reg-email">Email</label><input id="reg-email" type="email" autoComplete="email" value={form.email} onChange={(e) => update("email", e.target.value)} required /></div>
+          <div><label htmlFor="reg-phone">Phone</label><input id="reg-phone" type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} placeholder="07XXXXXXXX" /></div>
+          <div><label htmlFor="reg-password">Password (min 8 characters)</label><input id="reg-password" type="password" autoComplete="new-password" value={form.password} onChange={(e) => update("password", e.target.value)} required minLength={8} /></div>
           <button className="btn btn-primary" disabled={loading}>{loading ? "Creating..." : "Register"}</button>
         </form>
         <p className="muted" style={{ marginTop: "1rem" }}>

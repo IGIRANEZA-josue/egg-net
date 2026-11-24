@@ -1,40 +1,70 @@
 // POST /api/auth/register  -> creates a CUSTOMER account (never admin)
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { hashPassword, createToken, errorResponse } from "@/lib/auth";
+import { hashPassword, createToken, errorResponse, setAuthCookie } from "@/lib/auth";
+import { withApi, readJson, ApiError } from "@/lib/api-handler";
+import { registrationSchema, firstIssue, passwordWeakness } from "@/lib/validation";
+import { checkRateLimit, clientIp } from "@/lib/rate-limit";
 
-export async function POST(request: Request) {
+const MAX_REGISTRATIONS_PER_IP = 5;
+const WINDOW_SECONDS = 60 * 60;
+
+export const POST = withApi(async ({ request, log }) => {
+  // Account creation is expensive (bcrypt 12) and easy to abuse.
+  const limit = await checkRateLimit(`register:ip:${clientIp(request)}`, MAX_REGISTRATIONS_PER_IP, WINDOW_SECONDS);
+  if (!limit.allowed) {
+    const response = errorResponse("Too many accounts created from this network. Please try again later.", 429);
+    response.headers.set("retry-after", String(limit.retryAfter));
+    return response;
+  }
+
+  const body = await readJson(request);
+  const parsed = registrationSchema.safeParse(body);
+  if (!parsed.success) return errorResponse(firstIssue(parsed.error));
+
+  const { name, email, password, phone } = parsed.data;
+  const normalisedEmail = email.trim().toLowerCase();
+
+  const weak = passwordWeakness(password, normalisedEmail);
+  if (weak) return errorResponse(weak);
+
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, normalisedEmail));
+  if (existing) {
+    // The old message ("Email already registered.") was a clean enumeration
+    // oracle. Log the real reason, tell the caller the same thing either way.
+    log("registration rejected: email already in use");
+    return errorResponse("Could not create your account. Please check your details.", 409);
+  }
+
   try {
-    const body = await request.json();
-    const name = String(body.name || "").trim();
-    const email = String(body.email || "").trim().toLowerCase();
-    const password = String(body.password || "");
-    const phone = String(body.phone || "").trim();
-
-    // Basic validation
-    if (!name || !email || !password) return errorResponse("Name, email and password are required.");
-    if (password.length < 6) return errorResponse("Password must be at least 6 characters.");
-    if (!email.includes("@")) return errorResponse("Please enter a valid email.");
-
-    const [existing] = await db.select().from(users).where(eq(users.email, email));
-    if (existing) return errorResponse("Email already registered.");
-
     const [user] = await db
       .insert(users)
       .values({
         name,
-        email,
+        email: normalisedEmail,
         phone,
         password: await hashPassword(password),
-        role: "customer", // role is forced here - the frontend cannot choose it
+        role: "customer", // forced here - the frontend cannot choose it
       })
-      .returning({ id: users.id, name: users.name, email: users.email, role: users.role, phone: users.phone, address: users.address });
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        phone: users.phone,
+        address: users.address,
+      });
 
     const token = await createToken(user.id, user.role);
-    return NextResponse.json({ token, user }, { status: 201 });
-  } catch {
-    return errorResponse("Registration failed. Please try again.", 500);
+    return setAuthCookie(NextResponse.json({ user }, { status: 201 }), token);
+  } catch (error) {
+    // Unique violation from a concurrent registration with the same email.
+    if (typeof error === "object" && error && "code" in error && (error as { code: string }).code === "23505") {
+      return errorResponse("Could not create your account. Please check your details.", 409);
+    }
+    log("registration failed", error);
+    throw new ApiError("Registration failed. Please try again.", 500);
   }
-}
+});

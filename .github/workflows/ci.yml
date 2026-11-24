@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # The test harness boots its own in-process PostgreSQL (PGlite) from the
+      # committed migrations, so no service container is required. A real
+      # service is still the right thing for a staging deploy.
+      JWT_SECRET: ci-only-secret-that-is-at-least-32-chars-long
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Deliberately NO DATABASE_URL. Vercel builds a preview before any runtime
+      # secrets are attached, and a build that needs one fails there. The build
+      # must therefore succeed with the database unset - importing a route must
+      # never require a connection. A second build WITH a URL runs below.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Mirrors the deploy platform: no DATABASE_URL, so an import-time database
+      # read fails here instead of in production.
+      - name: Build (no database configured, as on a preview deploy)
+        run: npm run build
+
+      # And once more with a URL, so the configured path is covered too.
+      - name: Build (with DATABASE_URL)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm run build

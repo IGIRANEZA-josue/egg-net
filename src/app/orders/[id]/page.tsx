@@ -6,10 +6,12 @@ import Link from "next/link";
 import { api, rwf, formatDate, statusLabel, getSavedUser } from "@/lib/client/api";
 import StatusBadge from "@/components/StatusBadge";
 import OrderTracker from "@/components/OrderTracker";
+import { PICKUP, DELIVERY_RADIUS_KM } from "@/lib/fulfilment";
 
 type OrderData = {
   id: number; orderNumber: string; createdAt: string; customerName: string; phone: string;
   province: string; district: string; sector: string; address: string; instructions: string | null;
+  fulfilmentMethod: string; distanceKm: number | null;
   subtotal: number; deliveryFee: number; discount: number; total: number;
   paymentMethod: string; paymentStatus: string; orderStatus: string;
 };
@@ -124,12 +126,27 @@ function OrderDetailsContent() {
           <h3>Summary</h3>
           <p className="muted">{formatDate(order.createdAt)}</p>
           <div className="summary-row"><span>Subtotal</span><span>{rwf(order.subtotal)}</span></div>
-          <div className="summary-row"><span>Delivery</span><span>{rwf(order.deliveryFee)}</span></div>
+          <div className="summary-row">
+            <span>{order.fulfilmentMethod === "pickup" ? "Pickup handling" : "Delivery"}</span>
+            <span>{rwf(order.deliveryFee)}</span>
+          </div>
           <div className="summary-row"><span>Discount</span><span>- {rwf(order.discount)}</span></div>
           <div className="summary-row summary-total"><span>Total</span><span>{rwf(order.total)}</span></div>
           <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "1rem 0" }} />
           <p><strong>Payment:</strong> {statusLabel(order.paymentMethod)} · <StatusBadge status={order.paymentStatus} /></p>
-          <p><strong>Deliver to:</strong><br />{order.customerName}<br />{order.phone}<br />{order.address}, {order.sector}, {order.district}, {order.province}</p>
+          {order.fulfilmentMethod === "pickup" ? (
+            <div className="pickup-block">
+              <p><strong>Collect from:</strong> {PICKUP.name}<br />{PICKUP.cell} cell, {PICKUP.sector} sector, {PICKUP.district}<br />{PICKUP.hours}</p>
+              <p className="muted small">
+                {PICKUP.directions}
+                {typeof order.distanceKm === "number"
+                  ? ` Your order was placed ${order.distanceKm} km away, outside our ${DELIVERY_RADIUS_KM} km delivery area.`
+                  : " We could not confirm your location, so this order is for collection."}
+              </p>
+            </div>
+          ) : (
+            <p><strong>Deliver to:</strong><br />{order.customerName}<br />{order.phone}<br />{order.address}, {order.sector}, {order.district}, {order.province}</p>
+          )}
           {order.instructions && <p><strong>Instructions:</strong> {order.instructions}</p>}
         </div>
       </div>

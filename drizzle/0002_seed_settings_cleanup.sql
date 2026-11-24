@@ -1,0 +1,12 @@
+-- The `settings` table used to store the JWT signing secret in plaintext so that
+-- login sessions survived restarts. That design meant a database dump handed an
+-- attacker the ability to mint valid admin tokens.
+--
+-- The signing secret now comes from the JWT_SECRET environment variable only
+-- (see src/lib/jwt-secret.ts), so the table has no remaining consumer and is
+-- dropped here.
+--
+-- OPERATOR NOTE: every logged-in session is invalidated by this change. Users
+-- must log in once more after deploying. This is intentional: the old tokens
+-- were signed with a secret that was stored next to the data it protected.
+DROP TABLE IF EXISTS "settings";

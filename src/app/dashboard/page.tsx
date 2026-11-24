@@ -22,6 +22,8 @@ export default function CustomerDashboardPage() {
   useEffect(() => {
     const saved = getSavedUser();
     if (!saved) { router.replace("/login"); return; }
+    // Hydrating from localStorage, which is unavailable during SSR.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(saved);
     api<{ orders: Order[] }>("/api/orders")
       .then((d) => setOrders(d.orders))
@@ -35,7 +37,11 @@ export default function CustomerDashboardPage() {
     .filter((o) => o.orderStatus !== "cancelled")
     .reduce((sum, o) => sum + o.total, 0);
   const latest = orders[0];
-  const activeOrder = orders.find((o) => o.orderStatus !== "delivered" && o.orderStatus !== "cancelled");
+  const activeOrders = orders.filter((o) => o.orderStatus !== "delivered" && o.orderStatus !== "cancelled");
+  // One object drives the tracker, the header and every link. Previously the
+  // header/tracker used `activeOrder` while the number and links used `latest`,
+  // so the card could label one order with another order's progress.
+  const focus = activeOrders[0] ?? latest;
 
   return (
     <div className="container" style={{ paddingBottom: "3rem" }}>
@@ -58,8 +64,8 @@ export default function CustomerDashboardPage() {
 
       <div className="layout-2" style={{ marginTop: "1.5rem" }}>
         <div className="card">
-          <h3>{activeOrder ? "On its way" : "Your latest order"}</h3>
-          {!latest ? (
+          <h3>{activeOrders.length ? "On its way" : "Your latest order"}</h3>
+          {!focus ? (
             <>
               <p className="muted">You have not placed an order yet. Pick a pack of fresh eggs and we will deliver it to your sector.</p>
               <Link href="/products" className="btn btn-primary btn-sm btn-arrow">Start shopping</Link>
@@ -67,12 +73,17 @@ export default function CustomerDashboardPage() {
           ) : (
             <>
               <p className="mono muted" style={{ margin: 0 }}>
-                Order #{latest.orderNumber} · {formatDate(latest.createdAt)} · {rwf(latest.total)} · <StatusBadge status={latest.paymentStatus} />
+                Order #{focus.orderNumber} · {formatDate(focus.createdAt)} · {rwf(focus.total)} · <StatusBadge status={focus.paymentStatus} />
               </p>
-              <OrderTracker status={(activeOrder || latest).orderStatus} />
+              <OrderTracker status={focus.orderStatus} />
+              {activeOrders.length > 1 && (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  You have {activeOrders.length} orders in progress. <Link href="/orders">See all orders</Link>.
+                </p>
+              )}
               <div style={{ display: "flex", gap: 8, marginTop: "1rem", flexWrap: "wrap" }}>
-                <Link href={`/orders/${latest.id}`} className="btn btn-primary btn-sm">View order</Link>
-                <Link href={`/orders/${latest.id}/invoice`} className="btn btn-outline btn-sm">Invoice</Link>
+                <Link href={`/orders/${focus.id}`} className="btn btn-primary btn-sm">View order</Link>
+                <Link href={`/orders/${focus.id}/invoice`} className="btn btn-outline btn-sm">Invoice</Link>
                 <Link href="/orders" className="btn btn-outline btn-sm">All orders</Link>
               </div>
             </>

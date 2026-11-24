@@ -45,10 +45,10 @@ export default function DeliveryBanner() {
     <div className="delivery-notice" role="status">
       <div className="container delivery-notice-inner">
         <p>
-          <strong>Your order is coming</strong>
+          <strong>{notice.method === "pickup" ? "Ready for collection" : "Your order is coming"}</strong>
           <span className="delivery-notice-meta">Order #{notice.orderNumber}</span>
         </p>
-        <Link href={`/orders/${notice.id}`}>Track order</Link>
+        <Link href={`/orders/${notice.id}`}>{notice.method === "pickup" ? "Collection details" : "Track order"}</Link>
         <button onClick={clearDeliveryNotice} aria-label="Close message">×</button>
       </div>
     </div>

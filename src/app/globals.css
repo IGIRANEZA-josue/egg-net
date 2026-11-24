@@ -121,19 +121,49 @@ hr { border: 0; border-top: 1px solid var(--hairline); }
 .nav-mobile-only { display: none; }
 .nav-toggle { display: none; background: none; border: 1px solid var(--hairline); color: var(--ink); font-size: 1.1rem; border-radius: 999px; padding: 0.1rem 0.65rem; cursor: pointer; }
 @media (max-width: 900px) {
-  .nav-toggle { display: block; margin-left: auto; }
+  /* 44px minimum touch target (Apple HIG / WCAG 2.5.5) */
+  .nav-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-left: auto; min-width: 44px; min-height: 44px; line-height: 1;
+  }
+  /* Anchors the absolute panel to the header. The header keeps its own sticky
+     behaviour: it is already the sticky element inside .site-top, so this
+     `relative` only affects positioned children, not the stickiness. */
+  .navbar { position: relative; }
+  .navbar .container { position: relative; z-index: 2; background: var(--paper); }
   .nav-links {
-    display: none; position: absolute; top: 62px; left: 0; right: 0;
-    background: var(--paper); border-bottom: 1px solid var(--hairline);
-    flex-direction: column; align-items: stretch; padding: 0.75rem 1.5rem 1.25rem; gap: 0;
+    display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 2;
+    background: var(--paper); border-bottom: 1px solid var(--ink);
+    box-shadow: 0 18px 30px -18px rgba(0, 0, 0, 0.35);
+    flex-direction: column; align-items: stretch; padding: 0.5rem 1.5rem 1.25rem; gap: 0;
+  }
+  /* Tap-outside layer: covers the page but sits under the panel (z 2) and the
+     header bar (z 2). The navbar creates the stacking context it lives in. */
+  .nav-backdrop {
+    position: fixed; inset: 0; z-index: 1; border: 0; padding: 0;
+    background: rgba(20, 19, 16, 0.42); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
   .nav-links.open { display: flex; }
-  .nav-links a, .nav-links button { display: block; width: 100%; text-align: left; padding: 0.75rem 0; border-bottom: 1px solid var(--hairline); }
+  .nav-links a, .nav-links button {
+    display: block; width: 100%; text-align: left; padding: 0.9rem 0;
+    border-bottom: 1px solid var(--hairline); min-height: 44px; font-size: 0.78rem;
+  }
+  .nav-links li:last-child a, .nav-links li:last-child button { border-bottom: 0; }
   .nav-links .nav-mobile-only { display: block; }
   /* keep the main pill action visible on small screens, hide the text links */
   .nav-right { display: flex; gap: 0.5rem; }
   .nav-right .nav-user { display: none; }
   .navbar .container { gap: 0.6rem; }
+  /* Header pills are the widest fixed items; shrink them before the row breaks. */
+  .nav-right .btn { padding: 0.6rem 0.9rem; font-size: 0.82rem; }
+  .brand { flex: 0 0 auto; }
+  .nav-must-change { font-size: 0.58rem; padding: 3px 6px; }
+}
+/* On a narrow phone the header action is the burger + one pill only. */
+@media (max-width: 420px) {
+  .nav-action-cart, .nav-action-add { display: none; }
+  .nav-right { gap: 0.35rem; }
 }
 
 /* ---------- FOOTER ---------- */
@@ -356,10 +386,16 @@ td { font-variant-numeric: tabular-nums; }
 .admin-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid var(--ink); padding-bottom: 1rem; flex-wrap: wrap; }
 .bar-chart { display: flex; align-items: flex-end; gap: 0.5rem; height: 160px; padding-top: 1rem; border-bottom: 1px solid var(--ink); }
 .bar-chart .bar { flex: 1; background: var(--ink); position: relative; min-height: 3px; }
-.bar-chart .bar span { position: absolute; bottom: -1.5rem; left: 0; right: 0; text-align: center; font-family: var(--font-mono); font-size: 0.6rem; color: var(--muted); }
+.bar-chart .bar span {
+  position: absolute; bottom: -1.5rem; left: 0; right: 0; text-align: center;
+  font-family: var(--font-mono); font-size: 0.6rem; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .thumb { width: 50px; height: 50px; object-fit: cover; filter: grayscale(1); border: 1px solid var(--hairline); }
 
 /* ---------- INVOICE ---------- */
+.invoice .summary-row { flex-wrap: wrap; }
+.invoice-header > * { min-width: 0; }
 .invoice { max-width: 780px; margin: 0 auto; background: var(--paper); padding: 2.5rem; border: 1px solid var(--hairline); border-radius: 2px; }
 .invoice-header { display: flex; justify-content: space-between; gap: 1.5rem; border-bottom: 1px solid var(--ink); padding-bottom: 1.25rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 @media print {
@@ -376,12 +412,17 @@ td { font-variant-numeric: tabular-nums; }
    RESPONSIVE / MOBILE LAYER
    ========================================================= */
 
-/* never allow accidental sideways scrolling */
-html, body { overflow-x: hidden; }
+/* Horizontal overflow must be prevented by the rules below, not hidden here:
+   `overflow: hidden` on <body> turns it into a second scroll container, which
+   breaks `position: sticky` for the header. `clip` keeps the guard without
+   creating a scroll container. The /devices page measures scrollWidth directly,
+   so a genuinely broken layout is reported rather than silently cropped. */
+html { overflow-x: clip; }
 .grid > *, .layout-2 > *, .form-row > *, .feature-list .item, .admin-header > * { min-width: 0; }
 
-/* long dropdown menu can scroll on short phones */
-.nav-links { max-height: calc(100vh - 62px); overflow-y: auto; }
+/* long dropdown menu can scroll on short phones.
+   dvh accounts for the mobile browser toolbar; vh is the fallback. */
+.nav-links { max-height: calc(100vh - 62px); max-height: calc(100dvh - 62px); overflow-y: auto; }
 
 /* ---------- Tablets and small laptops ---------- */
 @media (max-width: 900px) {
@@ -444,6 +485,8 @@ html, body { overflow-x: hidden; }
   /* tables scroll sideways instead of squashing */
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .table-wrap table { min-width: 520px; }
+  /* Inline number inputs (e.g. admin stock) must not force a wide column. */
+  .table-wrap input[type="number"] { width: 64px !important; }
   .invoice .table-wrap table, .invoice table { min-width: 0; }
   th, td { padding: 0.6rem 0.7rem; font-size: 0.84rem; }
   th { font-size: 0.62rem; letter-spacing: 0.12em; }
@@ -478,12 +521,18 @@ html, body { overflow-x: hidden; }
 @media (max-width: 380px) {
   .container { padding: 0 0.9rem; }
   .navbar .container { height: 56px; }
-  .nav-links { top: 56px; max-height: calc(100vh - 56px); }
+  .nav-links { max-height: calc(100vh - 56px); }
   .brand { font-size: 0.95rem; }
   .hero h1 { font-size: 2.1rem; }
   .page-title { font-size: 1.9rem; }
   .btn { padding: 0.8rem 1.05rem; font-size: 0.85rem; }
+  /* Keep the header on one line at 320px: brand + one pill + burger. */
+  .nav-right .btn { padding: 0.5rem 0.7rem; font-size: 0.76rem; }
   .wordmarks { gap: 0.8rem 1.1rem; }
+  .invoice { padding: 1rem; }
+  .card { padding: 1rem; }
+  .bar-chart .bar span { font-size: 0.52rem; }
+  .table-wrap table { min-width: 460px; }
 }
 
 /* =========================================================
@@ -517,6 +566,8 @@ html, body { overflow-x: hidden; }
 .delivery-notice button {
   margin-left: auto; background: none; border: none; color: inherit;
   font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 0.15rem 0.3rem;
+  min-width: 44px; min-height: 44px; display: inline-flex;
+  align-items: center; justify-content: center;
 }
 
 /* green success message inside a page */
@@ -581,3 +632,400 @@ html, body { overflow-x: hidden; }
   width: 92px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.66rem;
 }
 .demo-credentials small { display: block; margin-top: 0.6rem; color: var(--muted); font-family: var(--font-mono); font-size: 0.64rem; }
+
+/* Reminder shown to an account that still uses a seeded/demo password. */
+.nav-must-change {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--yellow, #f5e663);
+  border: 1px solid var(--ink);
+  padding: 4px 8px;
+  border-radius: 999px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.nav-must-change:hover { background: var(--ink); color: var(--paper, #f4f2ea); }
+
+/* =========================================================
+   RESPONSIVE SAFETY NET
+   Rules that apply at every width. They exist so a single
+   unlucky element cannot create horizontal scrolling on a
+   phone, without changing how anything looks on desktop.
+   ========================================================= */
+
+/* Images keep their proportions when they shrink. Written with :where() so the
+   rule carries zero specificity and can never override a component's own height
+   (product cards crop to 210px, cart thumbnails 72px, the hero fills its band). */
+:where(img, svg, video, canvas) { max-width: 100%; }
+:where(img) { height: auto; }
+
+/* Long words, URLs and emails wrap instead of pushing the page wide. Applied to
+   block elements only, so inline text still breaks at spaces first. */
+p, li, td, th, dd, dt, h1, h2, h3, h4, blockquote, .card, .alert { overflow-wrap: anywhere; }
+
+/* A field label is a block, but must not break mid-word at 320px ("Full name"
+   inside a 100px form row). Keep labels at normal word wrapping. */
+label { overflow-wrap: normal; }
+
+/* Wrapping is the default for text; only buttons keep nowrap. */
+.btn { white-space: normal; }
+
+/* A card is never a fixed box: its content decides its height. */
+.card { min-width: 0; }
+
+/* Focus is always visible and never clipped by a scroll container. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Respect the OS "reduce motion" setting for the small hover lifts. */
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover { transform: none; }
+}
+
+/* ---------- Short landscape phones (e.g. 667x375, 740x360) ---------- */
+@media (max-height: 480px) and (orientation: landscape) {
+  /* Nav behaviour is decided by width, in the blocks above. A landscape phone
+     between 900 and 932px wide keeps the desktop row, which is fine because the
+     panel below is not used at that width either. Only vertical rhythm changes. */
+  .nav-right .btn { padding: 0.4rem 0.7rem; font-size: 0.74rem; }
+  .hero { padding-top: 1.5rem; }
+  .hero h1 { font-size: clamp(2rem, 6vh, 2.6rem); margin-bottom: 0.75rem; }
+  .hero p { margin-bottom: 1rem; }
+  .hero-media { height: 170px; margin-top: 1.25rem; }
+  .section { padding: 2.5rem 0; }
+}
+
+/* ---------- Admin toolbars: fixed widths become flexible ---------- */
+.admin-search { width: 100%; max-width: 260px; }
+.admin-filter { width: 100%; max-width: 200px; }
+.admin-stock-input { width: 72px; }
+@media (max-width: 640px) {
+  .admin-search, .admin-filter { max-width: none; }
+  .admin-header > input, .admin-header > select { flex: 1 1 100%; }
+}
+
+/* =========================================================
+   DEVICE LAB  (/devices)
+   A live iframe of the real site inside a phone frame.
+   ========================================================= */
+.devices-page { padding-top: 2.5rem; padding-bottom: 4rem; }
+.devices-head { max-width: 62ch; }
+.devices-intro { margin-top: 0.6rem; }
+
+.devices-toolbar {
+  display: flex; flex-wrap: wrap; gap: 1rem 1.25rem; align-items: flex-end;
+  margin: 1.75rem 0 1.25rem; padding: 1rem 1.15rem;
+  border: 1px solid var(--ink); background: var(--paper-2);
+}
+.devices-field { display: flex; flex-direction: column; gap: 0.35rem; flex: 1 1 210px; min-width: 0; }
+.devices-field label {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.devices-field select { width: 100%; }
+.devices-readout {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; flex: 1 1 100%;
+  padding-top: 0.85rem; border-top: 1px solid var(--hairline);
+}
+.devices-open-link { font-size: 0.76rem; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+
+.devices-alert {
+  margin-bottom: 1.25rem; padding: 0.75rem 1rem; font-size: 0.82rem;
+  background: #fbeae4; border-left: 3px solid #a3402a; color: #6d2416;
+}
+.devices-alert code { font-family: var(--font-mono); font-size: 0.72rem; }
+
+/* ---- stage ---- */
+.device-stage { display: flex; flex-wrap: wrap; gap: 2.5rem; align-items: flex-start; }
+.device-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; flex: 0 1 auto; }
+.device-scaler { position: relative; flex: none; }
+.device-scaler .phone-frame { position: absolute; top: 0; left: 0; transform-origin: top left; }
+
+.phone-frame {
+  padding: 24px 12px; border-radius: 40px;
+  background: linear-gradient(160deg, #3a3833, #14130f 55%, #2b2925);
+  box-shadow:
+    0 0 0 2px #0c0b09 inset,
+    0 0 0 8px #2a2823,
+    0 26px 55px -18px rgba(0, 0, 0, 0.55);
+}
+.phone-speaker {
+  position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+  width: 54px; height: 5px; border-radius: 999px; background: #0a0908;
+}
+.phone-screen { width: 100%; height: 100%; overflow: hidden; border-radius: 24px; background: var(--paper); }
+.phone-screen iframe { display: block; border: 0; background: var(--paper); }
+.phone-home {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 96px; height: 4px; border-radius: 999px; background: #4a473f;
+}
+.device-caption { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; font-size: 0.8rem; text-align: center; }
+.device-caption span { font-family: var(--font-mono); font-size: 0.66rem; color: var(--muted); }
+
+/* ---- side panel ---- */
+.device-side { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 0.85rem; }
+.devices-side-title {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500;
+}
+.device-others { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.device-mini {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  padding: 0.7rem 0.75rem; min-height: 44px;
+  border: 1px solid var(--hairline); background: var(--paper);
+  font: inherit; color: inherit; cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.device-mini:hover { border-color: var(--ink); transform: translateY(-2px); }
+.device-mini.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.device-mini-screen { display: block; border: 2px solid var(--ink); border-radius: 6px; background: var(--paper-2); }
+.device-mini-name { font-size: 0.72rem; font-weight: 600; }
+.device-mini-size { font-family: var(--font-mono); font-size: 0.58rem; color: var(--muted); }
+
+.devices-quick { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip {
+  min-height: 36px; padding: 0 0.7rem; border: 1px solid var(--hairline);
+  background: var(--paper); font: inherit; font-size: 0.72rem; color: var(--ink);
+  cursor: pointer; display: inline-flex; align-items: center;
+}
+.chip:hover { border-color: var(--ink); }
+.chip.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.devices-summary { margin-top: 0.35rem; padding: 0.9rem 1rem; border: 1px solid var(--hairline); background: var(--paper-2); }
+.devices-summary .muted { font-size: 0.8rem; }
+.devices-actions { margin-top: 0.6rem; }
+.devices-actions .btn { width: 100%; }
+.devices-progress { margin-top: 0.65rem; height: 6px; background: var(--paper); border: 1px solid var(--hairline); overflow: hidden; }
+.devices-progress > div { height: 100%; background: var(--ink); transition: width 0.25s linear; }
+.devices-progress-text { margin-top: 0.45rem; font-family: var(--font-mono); font-size: 0.64rem; color: var(--muted); }
+
+/* ---- matrix ---- */
+.devices-matrix { margin-top: 3.5rem; }
+.devices-matrix-head {
+  display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; justify-content: space-between;
+  border-bottom: 1px solid var(--ink); padding-bottom: 0.75rem;
+}
+.devices-matrix-head .section-title { margin: 0; font-size: clamp(1.6rem, 4vw, 2.4rem); }
+.devices-matrix-note { margin-top: 0.75rem; max-width: 72ch; font-size: 0.84rem; }
+.segmented { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--ink); }
+.segmented button {
+  min-height: 40px; padding: 0 0.8rem; border: 0; border-right: 1px solid var(--hairline);
+  background: var(--paper); font: inherit; font-size: 0.72rem; cursor: pointer;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button.active { background: var(--ink); color: var(--paper); }
+
+.devices-table { width: 100%; margin-top: 1rem; }
+.devices-table th { font-size: 0.58rem; white-space: nowrap; }
+.devices-table td { vertical-align: middle; font-size: 0.8rem; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.devices-table tr.selected { background: var(--paper-2); }
+.devices-link {
+  border: 0; background: none; padding: 0; font: inherit; font-weight: 600; font-size: 0.82rem;
+  color: var(--ink); cursor: pointer; text-align: left; text-decoration: underline;
+  text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+.devices-path { display: block; font-family: var(--font-mono); font-size: 0.6rem; color: var(--muted); }
+.devices-status-cell { text-align: center; }
+.devices-open { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; }
+
+.status-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; height: 24px; padding: 0 0.4rem; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.62rem;
+  background: var(--paper-2); color: var(--muted); border: 1px solid var(--hairline);
+  white-space: nowrap;
+}
+.status-dot.ok { background: #e8f2e5; border-color: #3f6b3a; color: #2c4a28; }
+.status-dot.overflow { background: #fbeae4; border-color: #a3402a; color: #7d2c1b; }
+.status-dot.checking { border-style: dashed; }
+.status-dot.idle { color: var(--muted); }
+.devices-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; margin-top: 0.85rem; font-size: 0.72rem; }
+.devices-legend-sep { margin: 0 0.3rem; }
+
+/* the sweep frame: measured, never seen, and never scrollable-into */
+.devices-probe {
+  position: fixed; top: 0; left: -200vw; width: 1px; height: 1px;
+  overflow: hidden; visibility: hidden; pointer-events: none;
+  contain: strict;
+}
+
+@media (max-width: 900px) {
+  .device-stage { gap: 1.75rem; justify-content: center; }
+  .device-side { flex: 1 1 100%; }
+  .device-others, .devices-quick { justify-content: center; }
+  .devices-toolbar { gap: 0.75rem; }
+}
+@media (max-width: 640px) {
+  .devices-page { padding-top: 1.5rem; padding-bottom: 2.5rem; }
+  .devices-table th, .devices-table td { font-size: 0.7rem; }
+  .devices-table td { padding-left: 0.35rem; padding-right: 0.35rem; }
+  .segmented { width: 100%; }
+  .segmented button { flex: 1; }
+  .devices-matrix { margin-top: 2.5rem; }
+}
+
+
+/* =========================================================
+   CHECKOUT LOCATION / FULFILMENT
+   The first thing a customer does is tell us where they are,
+   because that decides delivery or collection.
+   ========================================================= */
+.location-card { border: 1px solid var(--ink); }
+.location-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.location-head h3 { margin: 0; }
+.step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%;
+  background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500;
+}
+.location-lead { font-size: 0.86rem; margin-bottom: 0.9rem; }
+.location-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.location-note { margin-top: 0.7rem; font-size: 0.8rem; }
+
+.location-manual { margin-top: 0.9rem; border-top: 1px solid var(--hairline); padding-top: 0.75rem; }
+.location-manual summary {
+  cursor: pointer; font-family: var(--font-mono); font-size: 0.7rem;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  min-height: 44px; display: flex; align-items: center;
+}
+.location-manual summary:hover { color: var(--ink); }
+.location-manual .form-row { margin-top: 0.75rem; }
+.small { font-size: 0.76rem; }
+
+/* the verdict: green-ish for delivery, amber for "come and collect" */
+.fulfilment-result {
+  margin-top: 1rem; padding: 0.85rem 1rem; border-left: 3px solid var(--ink);
+  background: var(--paper-2);
+}
+.fulfilment-result strong {
+  display: block; font-family: var(--font-display); font-weight: 700;
+  font-size: 0.95rem; letter-spacing: -0.015em; margin-bottom: 0.2rem;
+}
+.fulfilment-result p { margin: 0; font-size: 0.82rem; color: var(--muted); }
+.fulfilment-result.delivery { border-left-color: #3f6b3a; background: #eef4ec; }
+.fulfilment-result.pickup { border-left-color: #a3402a; background: #fbf0ec; }
+.pickup-details { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--hairline); }
+.pickup-details p { margin-bottom: 0.3rem; color: var(--ink); font-size: 0.8rem; }
+.pickup-confirm {
+  margin-top: 0.9rem; padding: 0.7rem 0.85rem; border: 1px solid var(--ink);
+  background: var(--paper); font-size: 0.82rem; align-items: flex-start;
+  font-family: var(--font-display); text-transform: none; letter-spacing: 0; color: var(--ink);
+}
+.pickup-confirm input { width: 20px; height: 20px; flex: 0 0 20px; margin-top: 1px; accent-color: var(--ink); }
+.pickup-block { margin-top: 0.5rem; }
+
+@media (max-width: 640px) {
+  .location-lead { font-size: 0.82rem; }
+  .location-actions .btn { flex: 1 1 auto; }
+  .fulfilment-result { padding: 0.75rem 0.85rem; }
+}
+
+/* =========================================================
+   FOOTER NAVIGATION + ADMIN PORTAL
+   ========================================================= */
+.footer .footer-grid {
+  display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.5fr;
+  gap: 2rem; align-items: start;
+}
+.footer-heading {
+  font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+.footer nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.footer nav a { color: var(--ink); text-decoration: none; }
+.footer nav a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.footer-bottom { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--hairline); }
+.footer-bottom p { margin: 0; color: var(--muted); }
+
+.footer-admin-note { color: var(--muted); font-size: 0.68rem; line-height: 1.6; margin-bottom: 0.85rem; }
+.admin-portal { position: relative; }
+
+.admin-portal-link {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  min-height: 44px; padding: 0 0.9rem;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.1em;
+  text-transform: uppercase; text-decoration: none; cursor: pointer;
+}
+.admin-portal-link:hover { background: #2a2823; color: var(--paper); }
+.admin-portal-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #7ed957; flex: 0 0 7px;
+}
+.admin-portal-user { opacity: 0.7; }
+
+/* the menu opens upwards: it lives at the bottom of the page */
+.admin-portal-menu {
+  position: absolute; bottom: calc(100% + 0.5rem); left: 0; z-index: 30;
+  width: min(300px, calc(100vw - 3rem));
+  background: var(--paper); border: 1px solid var(--ink);
+  box-shadow: 0 22px 45px -20px rgba(0, 0, 0, 0.45);
+  padding: 0.9rem 1rem 0.75rem;
+}
+.admin-portal-menu[hidden] { display: none; }
+.admin-portal-title {
+  font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem;
+}
+.admin-portal-menu ul { list-style: none; margin: 0; padding: 0; }
+.admin-portal-menu li + li { border-top: 1px solid var(--hairline); }
+.admin-portal-menu a {
+  display: flex; flex-direction: column; gap: 0.1rem;
+  min-height: 44px; justify-content: center;
+  color: var(--ink); text-decoration: none; padding: 0.4rem 0;
+}
+.admin-portal-menu a span { font-family: var(--font-display); font-weight: 600; font-size: 0.86rem; }
+.admin-portal-menu a small { font-family: var(--font-mono); font-size: 0.58rem; color: var(--muted); letter-spacing: 0.04em; }
+.admin-portal-menu a:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.admin-portal-signout {
+  width: 100%; margin-top: 0.7rem; min-height: 44px;
+  border: 1px solid var(--hairline); background: var(--paper);
+  font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--red, #a3402a); cursor: pointer;
+}
+.admin-portal-signout:hover { border-color: var(--red, #a3402a); }
+
+@media (max-width: 900px) {
+  .footer .footer-grid { grid-template-columns: 1fr 1fr; gap: 1.75rem; }
+  .footer .footer-grid > div:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .footer .footer-grid { grid-template-columns: 1fr; }
+  .admin-portal, .admin-portal-link { width: 100%; }
+  .admin-portal-link { justify-content: center; }
+  .admin-portal-menu { left: 0; right: 0; width: auto; }
+}
+
+/* ---------- ADMIN DASHBOARD ---------- */
+.stat-card-link { display: block; color: inherit; text-decoration: none; transition: border-color 0.15s, transform 0.15s; }
+.stat-card-link:hover { border-color: var(--ink); transform: translateY(-2px); }
+.stat-sub { font-family: var(--font-mono); font-size: 0.6rem; color: var(--muted); margin-top: 0.2rem; letter-spacing: 0.02em; }
+
+.fulfilment-split h3 { margin-bottom: 0.9rem; }
+.fulfilment-split-row { display: flex; flex-wrap: wrap; gap: 2.5rem; }
+.fulfilment-split-row > div { display: flex; flex-direction: column; gap: 0.1rem; }
+.fulfilment-split-row .value { font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.fulfilment-split-row .label { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.fulfilment-split p { margin-top: 0.85rem; }
+
+.tool-card { display: flex; flex-direction: column; gap: 0.3rem; color: inherit; text-decoration: none; position: relative; padding-right: 2.5rem; transition: border-color 0.15s, transform 0.15s; }
+.tool-card:hover { border-color: var(--ink); transform: translateY(-2px); }
+.tool-card strong { font-size: 0.98rem; }
+.tool-card > span:not(.tool-arrow) { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.tool-arrow { position: absolute; right: 1.1rem; top: 50%; transform: translateY(-50%); font-family: var(--font-mono); color: var(--muted); }
+.tool-card:hover .tool-arrow { color: var(--ink); }
+
+/* a one-time password shown once, after a reset */
+.temp-password {
+  display: inline-block; margin: 0.35rem 0;
+  padding: 0.2rem 0.5rem; background: var(--paper); color: var(--ink);
+  border: 1px solid var(--ink); font-family: var(--font-mono);
+  font-size: 0.95rem; letter-spacing: 0.08em; user-select: all;
+}
+.alert-success small { opacity: 0.85; }

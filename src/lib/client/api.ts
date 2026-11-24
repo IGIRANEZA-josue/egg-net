@@ -1,6 +1,12 @@
 "use client";
 // Small helper to call our backend API from the browser (like services/api.js).
-// It automatically adds the JWT token saved in localStorage.
+//
+// The session token is NOT here. It lives in an HttpOnly cookie that the server
+// sets and the browser sends automatically, so this module cannot read it - and
+// neither can any script injected into the page.
+//
+// What is kept in localStorage is only the display profile (name, email, role).
+// It is never used to decide access: the server re-checks on every request.
 
 export type User = {
   id: number;
@@ -9,104 +15,64 @@ export type User = {
   phone: string | null;
   role: string;
   address: string | null;
+  mustChangePassword?: boolean;
   createdAt?: string;
 };
 
-// ------------------------------------------------------------------
-// Session storage. The login is kept in THREE places and every one of them
-// is optional: browser storage can be blocked or throw errors (private mode,
-// embedded previews). When that happens the login must still work.
-// ------------------------------------------------------------------
-let memoryToken: string | null = null;
+const USER_KEY = "egghub_user";
+
 let memoryUser: User | null = null;
-
-// These helpers never throw.
-function readStorage(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-function writeStorage(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // storage is blocked - the memory + cookie copies still work
-  }
-}
-function removeStorage(key: string) {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
-}
-function readCookie(name: string): string | null {
-  try {
-    const match = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
-    return match ? decodeURIComponent(match[1]) : null;
-  } catch {
-    return null;
-  }
-}
-function writeCookie(name: string, value: string) {
-  try {
-    document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; max-age=604800";
-    document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; max-age=604800; samesite=none; secure";
-  } catch {
-    // ignore
-  }
-}
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return memoryToken || readStorage("egghub_token") || readCookie("egghub_token");
-}
 
 export function getSavedUser(): User | null {
   if (typeof window === "undefined") return null;
   if (memoryUser) return memoryUser;
-  const raw = readStorage("egghub_user");
-  if (!raw) return null;
   try {
-    return JSON.parse(raw) as User;
+    const raw = window.localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const user = parsed as User;
+    if (typeof user.id !== "number" || typeof user.email !== "string") return null;
+    memoryUser = user;
+    return user;
   } catch {
     return null;
   }
 }
 
-export function saveAuth(token: string, user: User) {
+/** Cache the profile for rendering. Never a credential. */
+export function saveUser(user: User) {
   memoryUser = user;
-  if (token) {
-    memoryToken = token;
-    writeStorage("egghub_token", token);
-    writeCookie("egghub_token", token);
+  try {
+    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    // storage blocked - memory copy is enough for this page view
   }
-  writeStorage("egghub_user", JSON.stringify(user));
   window.dispatchEvent(new Event("egghub-auth"));
 }
 
-export function clearAuth() {
-  memoryToken = null;
+/** Forget the cached profile AND expire the cookie server-side. */
+export async function logout() {
   memoryUser = null;
-  removeStorage("egghub_token");
-  removeStorage("egghub_user");
-  writeCookie("egghub_token", "");
+  try {
+    window.localStorage.removeItem(USER_KEY);
+  } catch {
+    // ignore
+  }
   window.dispatchEvent(new Event("egghub-auth"));
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+  } catch {
+    // the cookie will expire on its own; the local UI is already logged out
+  }
 }
 
 // Generic request function. Throws an Error with the server message on failure.
 export async function api<T = unknown>(
   path: string,
-  options: { method?: string; body?: unknown; formData?: FormData } = {}
+  options: { method?: string; body?: unknown; formData?: FormData; headers?: Record<string, string> } = {}
 ): Promise<T> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-    headers["x-egghub-token"] = token; // backup, in case the first header is lost
-  }
+  const headers: Record<string, string> = { ...(options.headers ?? {}) };
   if (options.body) headers["Content-Type"] = "application/json";
 
   let response: Response;
@@ -114,6 +80,7 @@ export async function api<T = unknown>(
     response = await fetch(path, {
       method: options.method || "GET",
       headers,
+      credentials: "same-origin", // sends the HttpOnly session cookie
       body: options.formData ? options.formData : options.body ? JSON.stringify(options.body) : undefined,
     });
   } catch {
@@ -158,5 +125,5 @@ export function statusLabel(status: string) {
     cash: "Cash on Delivery",
     card: "Card",
   };
-  return labels[status] || status;
+  return labels[status] ?? status;
 }
