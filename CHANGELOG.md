@@ -3,6 +3,17 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — no admin entry point on the public site
+
+- **Removed the footer admin portal.** `src/components/AdminPortal.tsx` and the
+  footer's **Staff** column are gone, along with their CSS (`.admin-portal*`,
+  `.footer-admin-note` and the phone overrides). The footer is back to three
+  columns: brand, Shop and EggHub, stacking on a phone.
+- The admin screens themselves are unchanged and still reachable at `/admin`
+  for anyone with an admin session. They are simply not advertised: no link from
+  any public page. Access control is unaffected — `src/app/admin/layout.tsx` and
+  every `/api/admin/*` route still require the admin role.
+
 ## Unreleased — remove the home page hero image
 
 - The halftone bowl-of-eggs illustration is gone from the top of the home page.
@@ -45,13 +56,9 @@ Admins had to know that `/admin` existed. There was no link anywhere in the site
 
 ### Added
 
-- **Admin portal in the footer**, on every page. Signed out it is an *Admin portal
-  →* button to `/login?next=/admin`; signed in as an admin it becomes a menu of
-  every admin screen plus sign-out. It asks `/api/auth/profile` rather than
-  trusting `localStorage`, and the admin layout still re-checks the role per
-  request.
-- **Footer navigation**: Shop, EggHub and Staff columns (previously two paragraphs
-  with no links), stacking on phones.
+- **Footer navigation**: Shop and EggHub columns (previously two paragraphs with
+  no links), stacking on phones. *(The Staff column and its admin portal were
+  later removed — see above.)*
 - **Dashboard is a control centre**: every stat links to the screen that manages
   it, six capability cards, and two new panels — accounts by role
   (customers / admins / total) and **delivery vs pickup** with pickups still
