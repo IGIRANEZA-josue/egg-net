@@ -366,6 +366,15 @@ Test a restore before you need one.
 
 ---
 
+## Deploying
+
+See [`docs/deployment.md`](docs/deployment.md). Short version: `next build` needs
+no database, but every API route does at runtime — a serverless host has no
+database and an ephemeral filesystem, so set `DATABASE_URL` (a managed Postgres,
+not localhost), `JWT_SECRET`, usually `DATABASE_SSL=true`, then run
+`npm run db:migrate` and the seed once against that database.
+Uploads to `public/uploads` do not survive a redeploy.
+
 ## Testing
 
 ```bash

@@ -22,6 +22,10 @@ jobs:
       # service is still the right thing for a staging deploy.
       JWT_SECRET: ci-only-secret-that-is-at-least-32-chars-long
       NEXT_TELEMETRY_DISABLED: "1"
+      # Deliberately NO DATABASE_URL. Vercel builds a preview before any runtime
+      # secrets are attached, and a build that needs one fails there. The build
+      # must therefore succeed with the database unset - importing a route must
+      # never require a connection. A second build WITH a URL runs below.
 
     steps:
       - name: Checkout
@@ -45,5 +49,13 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
+      # Mirrors the deploy platform: no DATABASE_URL, so an import-time database
+      # read fails here instead of in production.
+      - name: Build (no database configured, as on a preview deploy)
+        run: npm run build
+
+      # And once more with a URL, so the configured path is covered too.
+      - name: Build (with DATABASE_URL)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: npm run build

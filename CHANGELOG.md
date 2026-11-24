@@ -3,6 +3,32 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — fix the build/deploy failure
+
+CI failed at the **Build** step (lint, typecheck and all 130 tests passed), and
+Vercel's deployment failed with the same root cause.
+
+### Fixed
+
+- **`src/db/index.ts` threw at import time when `DATABASE_URL` was missing.**
+  `next build` imports every route to collect page data, so a build with no
+  database configured — CI, a Vercel preview, or a fresh clone — crashed even
+  though nothing was trying to connect. The pool and the Drizzle client are now
+  created on first use (lazy proxies), so importing a route is free and the
+  clear `DATABASE_URL is not set` message still appears the moment a query
+  actually needs the database.
+
+### Added
+
+- CI now builds **twice**: once with no `DATABASE_URL` (mirroring a preview
+  deploy) and once with one, so this cannot regress silently.
+- `src/db/lazy.test.ts`: asserts the module imports without a database and that
+  a real query still fails with the explanatory message.
+- `docs/deployment.md`: what to set on Vercel (database, JWT secret, TLS,
+  migrations, seeding) and a symptom table for the failures that are
+  configuration rather than code.
+- `vercel.json`: framework, install/build commands and a 30 s function budget.
+
 ## Unreleased — admin portal
 
 Admins had to know that `/admin` existed. There was no link anywhere in the site.
