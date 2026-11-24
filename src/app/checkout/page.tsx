@@ -28,6 +28,9 @@ export default function CheckoutPage() {
     if (!user) { router.push("/login"); return; }
     const cart = getCart();
     if (cart.length === 0) { router.push("/cart"); return; }
+    // Browser-only stores cannot be read during SSR, so this has to happen after
+    // mount. It is a one-way hydration, not derived state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setItems(cart);
     // Pre-fill from the profile
     setDelivery((d) => ({ ...d, fullName: user.name, phone: user.phone || "", address: user.address || "" }));

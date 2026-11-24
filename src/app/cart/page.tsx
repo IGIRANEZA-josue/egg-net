@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CartItemRow from "@/components/CartItemRow";
 import { api, rwf, getSavedUser } from "@/lib/client/api";
-import { getCart, cartSubtotal, previewDiscount, type CartItem } from "@/lib/client/cart";
+import { getCart, setCart, cartSubtotal, previewDiscount, type CartItem } from "@/lib/client/cart";
 
 type Promotion = { name: string; type: string; value: number } | null;
 
@@ -14,15 +14,51 @@ export default function CartPage() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [promotion, setPromotion] = useState<Promotion>(null);
   const [deliveryFee, setDeliveryFee] = useState(1000);
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!getSavedUser()) { router.push("/login"); return; }
     const refresh = () => setItems(getCart());
     refresh();
     window.addEventListener("egghub-cart", refresh);
+
     api<{ promotion: Promotion; deliveryFee: number }>("/api/promotions/active")
       .then((d) => { setPromotion(d.promotion); setDeliveryFee(d.deliveryFee); })
       .catch(() => {});
+
+    // Re-check the cart against the live catalogue. Prices and stock cached in
+    // localStorage go stale as soon as an admin edits a product, and the totals
+    // shown here would silently disagree with checkout.
+    api<{ products: { id: number; name: string; price: number; discount: number; stock: number; isAvailable: boolean; image: string }[] }>(
+      "/api/products?pageSize=200"
+    )
+      .then((d) => {
+        const byId = new Map(d.products.map((p) => [p.id, p]));
+        const current = getCart();
+        const next: CartItem[] = [];
+        let changed = false;
+
+        for (const item of current) {
+          const live = byId.get(item.productId);
+          if (!live || !live.isAvailable || live.stock <= 0) {
+            changed = true;
+            continue; // no longer sold - drop it
+          }
+          const price = live.discount ? Math.round(live.price - (live.price * live.discount) / 100) : live.price;
+          const quantity = Math.min(item.quantity, live.stock);
+          if (price !== item.price || quantity !== item.quantity || live.stock !== item.stock) changed = true;
+          next.push({ ...item, name: live.name, price, stock: live.stock, quantity, image: live.image || item.image });
+        }
+
+        if (changed) {
+          setCart(next);
+          setNotice("Some items changed since you added them (price or stock). Your cart has been updated.");
+        }
+      })
+      .catch(() => {
+        // Offline or the request failed: keep the cached cart rather than empty it.
+      });
+
     return () => window.removeEventListener("egghub-cart", refresh);
   }, [router]);
 
@@ -33,6 +69,7 @@ export default function CartPage() {
   return (
     <div className="page container">
       <h1 className="page-title">Your Cart</h1>
+      {notice && <div className="alert alert-warning" role="status">{notice}</div>}
       {items.length === 0 ? (
         <div className="card text-center">
           <p>Your cart is empty.</p>

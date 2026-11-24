@@ -8,13 +8,32 @@ export function readPromotionBody(body: Record<string, unknown>) {
   const endRaw = String(body.endDate || "");
   const endDate = /^\d{4}-\d{2}-\d{2}$/.test(endRaw) ? new Date(endRaw + "T23:59:59") : new Date(endRaw);
   const active = body.active === undefined ? true : Boolean(body.active);
+  const productId = body.productId === null || body.productId === undefined || body.productId === ""
+    ? null
+    : Number(body.productId);
 
   if (!name) return { error: "Promotion name is required." };
+  if (name.length > 120) return { error: "Promotion name must be 120 characters or fewer." };
   if (type !== "percentage" && type !== "fixed") return { error: "Type must be 'percentage' or 'fixed'." };
   if (!Number.isFinite(value) || value <= 0) return { error: "Value must be a positive number." };
   if (type === "percentage" && value > 100) return { error: "Percentage cannot be more than 100." };
+  // Fixed discounts are money: keep them whole RWF.
+  if (type === "fixed" && !Number.isInteger(value)) return { error: "A fixed discount must be a whole number of RWF." };
+  if (productId !== null && (!Number.isInteger(productId) || productId <= 0)) {
+    return { error: "Please choose a valid product for this promotion." };
+  }
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return { error: "Please provide valid start and end dates." };
   if (endDate < startDate) return { error: "End date must be after start date." };
 
-  return { data: { name, type, value: Math.round(value), startDate, endDate, active } };
+  return {
+    data: {
+      name,
+      type,
+      value: Math.round(value),
+      productId,
+      startDate,
+      endDate,
+      active,
+    },
+  };
 }

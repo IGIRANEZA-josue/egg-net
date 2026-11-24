@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { getSavedUser, clearAuth, type User } from "@/lib/client/api";
+import { getSavedUser, logout as endSession, type User } from "@/lib/client/api";
 import { cartCount } from "@/lib/client/cart";
 import EggMark from "@/components/EggMark";
 
@@ -29,10 +29,17 @@ export default function Navbar() {
     };
   }, []);
 
-  useEffect(() => setOpen(false), [pathname]);
+  // Close the mobile menu on navigation. Deriving the state from the pathname
+  // avoids a setState-in-effect render cascade.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    setOpen(false);
+  }
 
-  function logout() {
-    clearAuth();
+  async function logout() {
+    // Expires the HttpOnly cookie on the server, then clears the cached profile.
+    await endSession();
     router.push("/login");
   }
 
@@ -50,7 +57,7 @@ export default function Navbar() {
           EggHub<sup>®</sup>
         </Link>
 
-        <ul className={`nav-links ${open ? "open" : ""}`}>
+        <ul id="primary-navigation" className={`nav-links ${open ? "open" : ""}`}>
           {!user && (
             <>
               {link("/", "Home")}
@@ -93,6 +100,12 @@ export default function Navbar() {
 
         <div className="nav-spacer" />
 
+        {user?.mustChangePassword && (
+          <Link href="/profile" className="nav-must-change" title="Change your password">
+            Change password
+          </Link>
+        )}
+
         <div className="nav-right">
           {user && <span className="nav-user">{user.name.split(" ")[0]}</span>}
           {!user && <Link href="/login" className="nav-user">Login</Link>}
@@ -106,7 +119,13 @@ export default function Navbar() {
           {user?.role === "admin" && <Link href="/admin/products/new" className="btn btn-primary btn-sm btn-arrow">Add Product</Link>}
         </div>
 
-        <button className="nav-toggle" onClick={() => setOpen(!open)} aria-label="Menu">☰</button>
+        <button
+          className="nav-toggle"
+          onClick={() => setOpen(!open)}
+          aria-label="Menu"
+          aria-expanded={open}
+          aria-controls="primary-navigation"
+        >☰</button>
       </div>
     </header>
   );

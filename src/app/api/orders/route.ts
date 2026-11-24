@@ -1,118 +1,207 @@
 // POST /api/orders -> customer places an order (server re-checks everything)
 // GET  /api/orders -> customer: own orders / admin: all orders
 import { NextResponse } from "next/server";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { orders, orderItems, products } from "@/db/schema";
-import { eq, desc, inArray } from "drizzle-orm";
-import { requireUser, errorResponse } from "@/lib/auth";
-import { DELIVERY_FEE, getActivePromotion, calculateDiscount, effectivePrice } from "@/lib/pricing";
+import { requireUser, requireAdmin, errorResponse } from "@/lib/auth";
+import {
+  DELIVERY_FEE,
+  getActivePromotion,
+  getProductPromotions,
+  calculateDiscount,
+  effectivePrice,
+} from "@/lib/pricing";
+import { withApi, readJson, ApiError } from "@/lib/api-handler";
+import { checkoutSchema, firstIssue } from "@/lib/validation";
+import { parsePagination } from "@/lib/pagination";
 
-const PAYMENT_METHODS = ["mobile_money", "cash", "card"];
+// Thrown inside the transaction; mapped to a 409 with a shopping-friendly message.
+class InsufficientStockError extends Error {
+  available: number;
+  constructor(name: string, available: number) {
+    super(`Only ${available} of ${name} left in stock.`);
+    this.name = "InsufficientStockError";
+    this.available = available;
+  }
+}
 
-type CartItemInput = { productId: number; quantity: number };
-
-export async function POST(request: Request) {
+export const POST = withApi(async ({ request, log }) => {
   const user = await requireUser(request);
   if (user instanceof NextResponse) return user;
 
+  const body = await readJson(request);
+
+  // Validate shape and bounds before touching the database. A 1 MB
+  // `instructions` value used to be written straight through.
+  const parsed = checkoutSchema.safeParse(body);
+  if (!parsed.success) return errorResponse(firstIssue(parsed.error));
+  const { items, delivery, paymentMethod } = parsed.data;
+
+  // ---- idempotency ----
+  // A double click, a retry on a flaky connection or a back-and-resubmit must
+  // not create a second order and a second stock decrement.
+  const idempotencyKey = request.headers.get("idempotency-key")?.trim() || null;
+  if (idempotencyKey) {
+    const [existing] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.idempotencyKey, idempotencyKey), eq(orders.customerId, user.id)));
+    if (existing) return NextResponse.json({ order: existing, replayed: true }, { status: 200 });
+  }
+
+  // ---- merge duplicate lines BEFORE pricing ----
+  // Sending the same product twice used to create two order_items rows and
+  // decrement stock twice from a stale base.
+  const mergedQuantities = new Map<number, number>();
+  for (const item of items) {
+    const total = (mergedQuantities.get(item.productId) ?? 0) + item.quantity;
+    if (total > 1000) return errorResponse("Quantity is too large for one order.");
+    mergedQuantities.set(item.productId, total);
+  }
+  const productIds = [...mergedQuantities.keys()];
+
+  // ---- mock payment gate ----
+  // Mobile Money / Card are only marked paid when PAYMENT_MODE=mock. Otherwise
+  // they stay pending until an operator confirms - the old behaviour reported
+  // revenue that was never collected.
+  const paymentMode = process.env.PAYMENT_MODE === "mock" ? "mock" : "real";
+  let paymentStatus: "paid" | "pending" = "pending";
+  // TODO(payments): replace this block with a provider call (e.g. MTN MoMo
+  // Collections), then add POST /api/payments/webhook that sets
+  // orders.paymentStatus from the provider's signed callback.
+  if (paymentMode === "mock" && (paymentMethod === "mobile_money" || paymentMethod === "card")) {
+    paymentStatus = "paid";
+  }
+
   try {
-    const body = await request.json();
-    const items: CartItemInput[] = Array.isArray(body.items) ? body.items : [];
-    const delivery = body.delivery || {};
-    const paymentMethod = String(body.paymentMethod || "");
-
-    // ---- validate input ----
-    if (items.length === 0) return errorResponse("Your cart is empty.");
-    if (!PAYMENT_METHODS.includes(paymentMethod)) return errorResponse("Please select a valid payment method.");
-    const required = ["fullName", "phone", "province", "district", "sector", "address"];
-    for (const field of required) {
-      if (!String(delivery[field] || "").trim()) return errorResponse(`Delivery ${field} is required.`);
-    }
-
-    // ---- load products from the database (never trust the frontend prices) ----
-    const ids = items.map((i) => Number(i.productId));
-    const dbProducts = await db.select().from(products).where(inArray(products.id, ids));
-
-    let subtotal = 0;
-    const lines: { productId: number; productName: string; price: number; quantity: number }[] = [];
-
-    for (const item of items) {
-      const product = dbProducts.find((p) => p.id === Number(item.productId));
-      const quantity = Number(item.quantity);
-      if (!product) return errorResponse("One of the products was not found.", 404);
-      if (!product.isAvailable) return errorResponse(`${product.name} is not available.`);
-      if (!Number.isInteger(quantity) || quantity <= 0) return errorResponse(`Invalid quantity for ${product.name}.`);
-      if (product.stock === 0) return errorResponse(`${product.name} is out of stock.`);
-      if (quantity > product.stock) return errorResponse(`Only ${product.stock} of ${product.name} left in stock.`);
-
-      const price = effectivePrice(product.price, product.discount);
-      subtotal += price * quantity;
-      lines.push({ productId: product.id, productName: product.name, price, quantity });
-    }
-
-    // ---- server-side totals ----
-    const promotion = await getActivePromotion();
-    const discount = calculateDiscount(subtotal, promotion);
-    const deliveryFee = DELIVERY_FEE;
-    const total = subtotal + deliveryFee - discount;
-
-    // ---- MOCK PAYMENT (development only) ----
-    // No real payment provider is connected. Cash = pending until delivered.
-    // Mobile money / card are marked "paid" by this test flow. Replace this with a real
-    // provider (e.g. MTN MoMo API) and use PAYMENT_API_KEY from .env when going live.
-    const paymentStatus = paymentMethod === "cash" ? "pending" : "paid";
-
-    // ---- save order + items + reduce stock (all in one transaction) ----
     const created = await db.transaction(async (tx) => {
+      // Lock the product rows for the life of the transaction. Reading them
+      // before the transaction (as this code used to) let two checkouts pass
+      // validation against the same stock and oversell.
+      const dbProducts = await tx
+        .select()
+        .from(products)
+        .where(inArray(products.id, productIds))
+        .for("update");
+
+      // Product-scoped promotions (a promotion row can target one product).
+      const productPromotions = await getProductPromotions(productIds, tx);
+
+      let subtotal = 0;
+      const lines: { productId: number; productName: string; price: number; quantity: number }[] = [];
+
+      for (const [productId, quantity] of mergedQuantities) {
+        const product = dbProducts.find((p) => p.id === productId);
+        if (!product || product.deletedAt) return errorResponse("One of the products was not found.", 404);
+        if (!product.isAvailable) return errorResponse(`${product.name} is not available.`);
+        if (product.stock < quantity) {
+          return errorResponse(`Only ${product.stock} of ${product.name} left in stock.`, 409);
+        }
+
+        // Product discount, then any product-scoped promotion on top of it.
+        const base = effectivePrice(product.price, product.discount);
+        const scoped = productPromotions.get(product.id) ?? null;
+        const scopedOff = calculateDiscount(base, scoped);
+        const price = base - scopedOff;
+
+        subtotal += price * quantity;
+        lines.push({ productId: product.id, productName: product.name, price, quantity });
+      }
+
+      const promotion = await getActivePromotion(tx);
+      const discount = calculateDiscount(subtotal, promotion);
+      const total = subtotal + DELIVERY_FEE - discount;
+
+      // Order number comes from a Postgres sequence (drizzle/0001_*.sql):
+      // the old Date.now()-based value collided under concurrency.
+      const [{ orderNumber }] = await tx.execute<{ orderNumber: string }>(
+        sql`select next_order_number() as "orderNumber"`
+      ).then((r) => r.rows as { orderNumber: string }[]);
+
       const [order] = await tx
         .insert(orders)
         .values({
-          orderNumber: "EGG" + Date.now().toString().slice(-6),
+          orderNumber,
           customerId: user.id,
-          customerName: String(delivery.fullName).trim(),
-          phone: String(delivery.phone).trim(),
-          province: String(delivery.province).trim(),
-          district: String(delivery.district).trim(),
-          sector: String(delivery.sector).trim(),
-          address: String(delivery.address).trim(),
-          instructions: String(delivery.instructions || "").trim(),
+          customerName: delivery.fullName,
+          phone: delivery.phone,
+          province: delivery.province,
+          district: delivery.district,
+          sector: delivery.sector,
+          address: delivery.address,
+          instructions: delivery.instructions ?? "",
           subtotal,
-          deliveryFee,
+          deliveryFee: DELIVERY_FEE,
           discount,
           total,
           paymentMethod,
           paymentStatus,
           orderStatus: "pending",
+          idempotencyKey,
+          statusChangedAt: new Date(),
         })
         .returning();
 
       await tx.insert(orderItems).values(lines.map((l) => ({ ...l, orderId: order.id })));
 
-      // reduce stock for each product
+      // Guarded decrement: `stock >= qty` makes the write itself the check, so
+      // even without the row lock above an oversell cannot be written.
       for (const line of lines) {
-        const product = dbProducts.find((p) => p.id === line.productId)!;
-        await tx
+        const [updated] = await tx
           .update(products)
-          .set({ stock: product.stock - line.quantity, updatedAt: new Date() })
-          .where(eq(products.id, line.productId));
+          .set({ stock: sql`${products.stock} - ${line.quantity}`, updatedAt: new Date() })
+          .where(and(eq(products.id, line.productId), sql`${products.stock} >= ${line.quantity}`))
+          .returning({ id: products.id });
+        if (!updated) throw new InsufficientStockError(line.productName, 0);
       }
+
       return order;
     });
 
+    if (created instanceof NextResponse) return created;
     return NextResponse.json({ order: created }, { status: 201 });
-  } catch {
-    return errorResponse("Failed to place order. Please try again.", 500);
+  } catch (error) {
+    if (error instanceof InsufficientStockError) return errorResponse(error.message, 409);
+    // A concurrent request with the same idempotency key lost the unique race.
+    if (typeof error === "object" && error && "code" in error && (error as { code: string }).code === "23505") {
+      log("idempotency conflict", error);
+      if (idempotencyKey) {
+        const [existing] = await db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.idempotencyKey, idempotencyKey), eq(orders.customerId, user.id)));
+        if (existing) return NextResponse.json({ order: existing, replayed: true }, { status: 200 });
+      }
+      return errorResponse("We could not place your order. Please try again.", 409);
+    }
+    log("order creation failed", error);
+    throw new ApiError("Failed to place order. Please try again.", 500);
   }
-}
+});
 
-export async function GET(request: Request) {
+export const GET = withApi(async ({ request }) => {
   const user = await requireUser(request);
   if (user instanceof NextResponse) return user;
 
-  const list =
-    user.role === "admin"
-      ? await db.select().from(orders).orderBy(desc(orders.createdAt))
-      : await db.select().from(orders).where(eq(orders.customerId, user.id)).orderBy(desc(orders.createdAt));
+  const { page, pageSize, offset } = parsePagination(request);
+  const isAdmin = user.role === "admin";
 
-  return NextResponse.json({ orders: list });
-}
+  const where = isAdmin ? undefined : eq(orders.customerId, user.id);
+  const rows = isAdmin
+    ? await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(pageSize).offset(offset)
+    : await db
+        .select()
+        .from(orders)
+        .where(where)
+        .orderBy(desc(orders.createdAt))
+        .limit(pageSize)
+        .offset(offset);
+
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(where);
+
+  return NextResponse.json({ orders: rows, total: count, page, pageSize });
+});

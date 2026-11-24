@@ -2,6 +2,8 @@
 // Shopping cart stored in localStorage (like services/cart.js).
 // The backend re-checks prices and stock at checkout, so this is only for display.
 
+import { safeRead, safeWrite } from "./storage";
+
 export type CartItem = {
   productId: number;
   name: string;
@@ -17,15 +19,42 @@ function notify() {
   window.dispatchEvent(new Event("egghub-cart"));
 }
 
+function isCartItem(value: unknown): value is CartItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    Number.isSafeInteger(item.productId) &&
+    typeof item.name === "string" &&
+    Number.isFinite(item.price) &&
+    Number.isFinite(item.stock) &&
+    Number.isFinite(item.quantity) &&
+    (item.quantity as number) > 0
+  );
+}
+
 export function getCart(): CartItem[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(KEY);
-  return raw ? (JSON.parse(raw) as CartItem[]) : [];
+  const items = safeRead<CartItem[]>(KEY, (value) => {
+    if (!Array.isArray(value)) return null;
+    // Discard only the broken entries rather than the whole cart.
+    const clean = value.filter(isCartItem).map((item) => ({
+      ...item,
+      image: typeof item.image === "string" ? item.image : "",
+      quantity: Math.max(1, Math.floor(item.quantity)),
+    }));
+    return clean;
+  });
+  return items ?? [];
 }
 
 function saveCart(items: CartItem[]) {
-  localStorage.setItem(KEY, JSON.stringify(items));
+  safeWrite(KEY, items);
   notify();
+}
+
+/** Replace the cart wholesale - used after refreshing against the live API. */
+export function setCart(items: CartItem[]) {
+  saveCart(items);
 }
 
 // Add a product (or increase its quantity). Returns an error message if not possible.

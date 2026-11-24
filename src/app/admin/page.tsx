@@ -6,7 +6,11 @@ import { api, rwf, formatDate } from "@/lib/client/api";
 import StatusBadge from "@/components/StatusBadge";
 
 type Dashboard = {
-  totalSales: number; totalOrders: number; totalCustomers: number; totalProducts: number; lowStockCount: number; pendingOrders: number;
+  // totalSales is money actually COLLECTED (paymentStatus = paid).
+  // pendingSales is owed but not received. Neither includes cancelled orders.
+  totalSales: number; pendingSales: number;
+  totalOrders: number; totalCustomers: number; totalProducts: number; availableProducts: number;
+  pendingOrders: number; deliveredOrders: number;
   lowStockProducts: { id: number; name: string; stock: number }[];
   recentOrders: { id: number; orderNumber: string; customerName: string; total: number; orderStatus: string; createdAt: string }[];
 };
@@ -23,12 +27,14 @@ export default function AdminDashboardPage() {
   if (!data) return <p className="muted">Loading dashboard...</p>;
 
   const stats = [
-    { label: "Total Sales", value: rwf(data.totalSales) },
+    { label: "Collected revenue", value: rwf(data.totalSales) },
+    { label: "Awaiting payment", value: rwf(data.pendingSales) },
     { label: "Orders", value: data.totalOrders },
+    { label: "Pending orders", value: data.pendingOrders },
     { label: "Customers", value: data.totalCustomers },
-    { label: "Products", value: data.totalProducts },
-    { label: "Low Stock", value: data.lowStockCount },
-    { label: "Pending Orders", value: data.pendingOrders },
+    { label: "Products", value: `${data.availableProducts} / ${data.totalProducts} available` },
+    { label: "Low stock", value: data.lowStockProducts.length },
+    { label: "Delivered", value: data.deliveredOrders },
   ];
 
   return (

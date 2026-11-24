@@ -44,7 +44,14 @@ export default function AdminProductsPage() {
           <tbody>
             {products.map((p) => (
               <tr key={p.id}>
-                <td>{p.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={p.image} alt="" className="thumb" /> : <div className="thumb product-image-placeholder" style={{ color: "var(--ink)" }}><EggMark size={22} /></div>}</td>
+                <td>
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image} alt={p.name} className="thumb" />
+                  ) : (
+                    <div className="thumb product-image-placeholder" style={{ color: "var(--ink)" }}><EggMark size={22} /></div>
+                  )}
+                </td>
                 <td><strong>{p.name}</strong>{p.discount > 0 && <span className="badge badge-yellow" style={{ marginLeft: 6 }}>-{p.discount}%</span>}</td>
                 <td>{p.packageSize} eggs</td>
                 <td>{rwf(p.price)}</td>

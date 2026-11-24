@@ -69,7 +69,10 @@ export default function ProductForm({ product }: Props) {
         {uploading && <small className="muted">Uploading...</small>}
         <small className="muted">Or paste an image URL:</small>
         <input value={form.image} onChange={(e) => update("image", e.target.value)} placeholder="https://... or /uploads/..." />
-        {form.image && /* eslint-disable-next-line @next/next/no-img-element */ <img src={form.image} alt="Preview" style={{ height: 120, borderRadius: 8, marginTop: 8 }} />}
+        {form.image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={form.image} alt="Product image preview" style={{ height: 120, borderRadius: 8, marginTop: 8 }} />
+        )}
       </div>
       <label className="checkbox"><input type="checkbox" checked={form.isAvailable} onChange={(e) => update("isAvailable", e.target.checked)} /> Available for customers</label>
       <div style={{ display: "flex", gap: 8 }}>

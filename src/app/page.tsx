@@ -41,7 +41,7 @@ export default function HomePage() {
         </div>
         <div className="hero-media">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/images/hero-halftone.jpg" alt="Hands passing a fresh egg" />
+          <img src="/images/hero-halftone.svg" alt="Halftone still life of a bowl of fresh eggs" width={1200} height={900} />
         </div>
       </section>
 

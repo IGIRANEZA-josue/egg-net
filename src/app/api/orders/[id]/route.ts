@@ -1,18 +1,22 @@
 // GET /api/orders/:id -> order details (owner or admin only)
 import { NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { orders, orderItems, reviews } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 import { requireUser, errorResponse } from "@/lib/auth";
+import { withApi } from "@/lib/api-handler";
+import { parseId } from "@/lib/parse-id";
 
-type Params = { params: Promise<{ id: string }> };
+type Params = { id: string };
 
-export async function GET(request: Request, { params }: Params) {
+export const GET = withApi<Params>(async ({ request, params }) => {
   const user = await requireUser(request);
   if (user instanceof NextResponse) return user;
 
-  const { id } = await params;
-  const [order] = await db.select().from(orders).where(eq(orders.id, Number(id)));
+  const id = parseId(params.id);
+  if (id === null) return errorResponse("Order not found.", 404);
+
+  const [order] = await db.select().from(orders).where(eq(orders.id, id));
   if (!order) return errorResponse("Order not found.", 404);
   if (user.role !== "admin" && order.customerId !== user.id) return errorResponse("Unauthorized.", 403);
 
@@ -24,4 +28,4 @@ export async function GET(request: Request, { params }: Params) {
     .where(and(eq(reviews.orderId, order.id), eq(reviews.customerId, user.id)));
 
   return NextResponse.json({ order, items, reviewedProductIds: myReviews.map((r) => r.productId) });
-}
+});

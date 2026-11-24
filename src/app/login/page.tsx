@@ -3,7 +3,26 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, saveAuth, getSavedUser, type User } from "@/lib/client/api";
+import { api, saveUser, getSavedUser, type User } from "@/lib/client/api";
+
+/** Only allow same-site redirects: `?next=https://evil.example` must not work. */
+export function safeNextPath(next: string | null): string | null {
+  if (!next) return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  try {
+    const url = new URL(next, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
+}
+
+const DEMO_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+const DEMO_ADMIN_EMAIL = process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL || "admin@egghub.rw";
+const DEMO_ADMIN_PASSWORD = process.env.NEXT_PUBLIC_DEMO_ADMIN_PASSWORD || "";
+const DEMO_CUSTOMER_EMAIL = process.env.NEXT_PUBLIC_DEMO_CUSTOMER_EMAIL || "demo@egghub.rw";
+const DEMO_CUSTOMER_PASSWORD = process.env.NEXT_PUBLIC_DEMO_CUSTOMER_PASSWORD || "";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,9 +31,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // if a saved (expired) session is present, pre-fill the email for the customer
+  // If a saved profile is present, pre-fill the email for the customer.
+  // localStorage is unavailable during SSR, so this runs after mount.
   useEffect(() => {
     const saved = getSavedUser();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved?.email) setEmail(saved.email);
   }, []);
 
@@ -24,15 +45,13 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const data = await api<{ token: string; user: User }>("/api/auth/login", {
+      const data = await api<{ user: User }>("/api/auth/login", {
         method: "POST",
         body: { email: loginEmail, password: loginPassword },
       });
-      saveAuth(data.token, data.user);
-      // Send admins to the admin dashboard and customers to their own dashboard.
-      // ?next=/checkout brings the customer back to finish the order.
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.push(next || (data.user.role === "admin" ? "/admin" : "/dashboard"));
+      // The token is in an HttpOnly cookie now; only the profile is cached.
+      saveUser(data.user);
+      router.replace(safeNextPath(new URLSearchParams(window.location.search).get("next")) ?? (data.user.role === "admin" ? "/admin" : "/dashboard"));
     } catch (err) {
       setError((err as Error).message);
       setLoading(false);
@@ -49,40 +68,46 @@ export default function LoginPage() {
     <div className="page container">
       <div className="card form-card">
         <h1 className="page-title">Login</h1>
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
         <form className="form" onSubmit={handleSubmit}>
           <div>
-            <label>Email</label>
-            <input name="email" type="email" defaultValue={email} autoComplete="email" required />
+            <label htmlFor="login-email">Email</label>
+            <input id="login-email" name="email" type="email" defaultValue={email} autoComplete="email" required />
           </div>
           <div>
-            <label>Password</label>
-            <input name="password" type="password" defaultValue={password} autoComplete="current-password" required />
+            <label htmlFor="login-password">Password</label>
+            <input id="login-password" name="password" type="password" defaultValue={password} autoComplete="current-password" required />
           </div>
           <button className="btn btn-primary" disabled={loading}>{loading ? "Logging in..." : "Login"}</button>
         </form>
         <p className="muted" style={{ marginTop: "1rem" }}>
           No account? <Link href="/register" style={{ color: "var(--green-dark)", fontWeight: 600 }}>Register</Link>
+          {" · "}
+          <Link href="/forgot-password" style={{ color: "var(--green-dark)", fontWeight: 600 }}>Forgot password?</Link>
         </p>
 
-        <div className="demo-credentials">
-          <span className="mono">Demo accounts — one click</span>
-          <table>
-            <tbody>
-              <tr><td>Admin</td><td>admin@egghub.rw</td><td>Admin1234</td></tr>
-              <tr><td>Customer</td><td>demo@egghub.rw</td><td>Demo1234</td></tr>
-            </tbody>
-          </table>
-          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-outline btn-sm" disabled={loading} onClick={() => doLogin("admin@egghub.rw", "Admin1234")}>
-              Login as demo admin
-            </button>
-            <button type="button" className="btn btn-outline btn-sm" disabled={loading} onClick={() => doLogin("demo@egghub.rw", "Demo1234")}>
-              Login as demo customer
-            </button>
+        {/* Demo accounts exist only when DEMO_MODE is explicitly enabled. The
+            old version printed the admin password here unconditionally. */}
+        {DEMO_ENABLED && (
+          <div className="demo-credentials">
+            <span className="mono">Demo accounts — one click</span>
+            <table>
+              <tbody>
+                <tr><td>Admin</td><td>{DEMO_ADMIN_EMAIL}</td><td>{DEMO_ADMIN_PASSWORD || "(set NEXT_PUBLIC_DEMO_ADMIN_PASSWORD)"}</td></tr>
+                <tr><td>Customer</td><td>{DEMO_CUSTOMER_EMAIL}</td><td>{DEMO_CUSTOMER_PASSWORD || "(set NEXT_PUBLIC_DEMO_CUSTOMER_PASSWORD)"}</td></tr>
+              </tbody>
+            </table>
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <button type="button" className="btn btn-outline btn-sm" disabled={loading || !DEMO_ADMIN_PASSWORD} onClick={() => doLogin(DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD)}>
+                Login as demo admin
+              </button>
+              <button type="button" className="btn btn-outline btn-sm" disabled={loading || !DEMO_CUSTOMER_PASSWORD} onClick={() => doLogin(DEMO_CUSTOMER_EMAIL, DEMO_CUSTOMER_PASSWORD)}>
+                Login as demo customer
+              </button>
+            </div>
+            <small>Demo mode is on. Never enable DEMO_MODE on a public deployment.</small>
           </div>
-          <small>Change these in .env before going live.</small>
-        </div>
+        )}
       </div>
     </div>
   );

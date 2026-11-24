@@ -1,0 +1,27 @@
+# Local development database only. The app itself runs with `npm run dev`.
+#
+#   docker compose up -d
+#   npm run db:migrate && npm run db:seed
+#
+# Matches the DATABASE_URL in .env.example.
+services:
+  db:
+    image: postgres:16
+    container_name: egghub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - egghub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  egghub_pgdata:
