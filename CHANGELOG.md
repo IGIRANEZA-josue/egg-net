@@ -3,6 +3,16 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — remove the home page hero image
+
+- The halftone bowl-of-eggs illustration is gone from the top of the home page.
+  The hero is now just the headline, paragraph and the two buttons, with even
+  padding above and below. Its CSS (`.hero-media`, including the three
+  breakpoint overrides) went with it.
+- `public/images/hero-halftone.svg` is kept in the repo, unreferenced, so the
+  artwork is still available if it is ever wanted back. The About page's own
+  image is untouched.
+
 ## Unreleased — fix the build/deploy failure
 
 CI failed at the **Build** step (lint, typecheck and all 130 tests passed), and
