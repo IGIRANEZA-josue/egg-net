@@ -1,10 +1,8 @@
 // Footer: masthead style with mono microtype.
-// Four columns on desktop, stacking on a phone. The last column is the admin
-// entry point: a plain login link for visitors, a full admin menu once signed in.
+// Three columns on desktop, stacking on a phone. There is no admin entry point
+// here: /admin is reachable by URL for staff who know it, and is not advertised.
 import Link from "next/link";
 import EggMark from "@/components/EggMark";
-import AdminPortal from "@/components/AdminPortal";
-import { PICKUP, DELIVERY_RADIUS_KM } from "@/lib/fulfilment";
 
 const SHOP_LINKS = [
   { href: "/products", label: "Products" },
@@ -46,13 +44,6 @@ export default function Footer() {
           </ul>
         </nav>
 
-        <div className="footer-admin">
-          <h3 className="footer-heading">Staff</h3>
-          <p className="footer-admin-note">
-            Delivery within {DELIVERY_RADIUS_KM} km of {PICKUP.name}; collection at {PICKUP.name} beyond that.
-          </p>
-          <AdminPortal />
-        </div>
       </div>
 
       <div className="container footer-bottom">

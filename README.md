@@ -220,21 +220,16 @@ List endpoints accept `?page=` and `?pageSize=` (default 50, max 200) and return
 
 ---
 
-## The admin portal
+## The admin area
 
-Admins enter from the **Staff** column in the site footer, on every page. The
-control is in `src/components/AdminPortal.tsx`:
+The admin screens are **not linked from the public site** — there is no admin
+entry point in the footer or navigation. Staff go to `/admin` directly, or to
+`/login?next=/admin` if they are signed out; logging in as an admin lands on
+`/admin`.
 
-- **Signed out** — a single *Admin portal →* button linking to
-  `/login?next=/admin`. Logging in as an admin lands straight on `/admin`.
-- **Signed in as admin** — the button turns into a menu listing every admin screen
-  (Dashboard, Products, Add product, Orders, Customers, Promotions, Sales, My
-  account) plus a sign-out. It opens upwards because it sits at the bottom of the
-  page, and it stacks full width on a phone.
-
-The menu is a door, not a lock: it asks `/api/auth/profile` who you are, and
-`src/app/admin/layout.tsx` re-checks the role on every request, so clearing or
-editing `localStorage` does not get anyone in.
+Access is still enforced server-side: `src/app/admin/layout.tsx` checks the role
+on every request, and every `/api/admin/*` route requires an admin session, so
+knowing the URL is not enough to get in.
 
 ### What an admin can do
 
