@@ -1,4 +1,6 @@
 // ABOUT PAGE
+import { DELIVERY_RADIUS_KM, PICKUP } from "@/lib/fulfilment";
+
 export default function AboutPage() {
   return (
     <div className="page container" style={{ maxWidth: 800 }}>
@@ -21,8 +23,8 @@ export default function AboutPage() {
         <ul>
           <li>Fresh, quality eggs every time</li>
           <li>Simple ordering and clear prices in RWF</li>
-          <li>Reliable delivery to your sector</li>
-          <li>Honest order tracking from placement to delivery</li>
+          <li>Delivery within {DELIVERY_RADIUS_KM} km of {PICKUP.name}, and collection there beyond that</li>
+          <li>Honest order tracking from placement to delivery or collection</li>
         </ul>
       </div>
     </div>

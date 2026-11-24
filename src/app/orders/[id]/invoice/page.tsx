@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api, rwf, formatDate, statusLabel, getSavedUser } from "@/lib/client/api";
+import { PICKUP } from "@/lib/fulfilment";
 
 type Order = {
   id: number; orderNumber: string; createdAt: string; customerName: string; phone: string;
-  province: string; district: string; sector: string; address: string;
+  province: string; district: string; sector: string; address: string; fulfilmentMethod: string; distanceKm: number | null;
   subtotal: number; deliveryFee: number; discount: number; total: number;
   paymentMethod: string; paymentStatus: string; orderStatus: string;
 };
@@ -54,11 +55,19 @@ export default function InvoicePage() {
             <p>{order.customerName}<br />{order.phone}</p>
           </div>
           <div>
-            <strong>Delivery address</strong>
-            <p>{order.address}<br />{order.sector}, {order.district}<br />{order.province}</p>
+            <strong>{order.fulfilmentMethod === "pickup" ? "Collection point" : "Delivery address"}</strong>
+            {order.fulfilmentMethod === "pickup" ? (
+              <p>
+                {PICKUP.name}<br />{PICKUP.cell} cell, {PICKUP.sector} sector<br />{PICKUP.district}, {PICKUP.province}
+                <br /><span className="muted">Pickup order — not delivered.</span>
+              </p>
+            ) : (
+              <p>{order.address}<br />{order.sector}, {order.district}<br />{order.province}</p>
+            )}
           </div>
         </div>
 
+        <div className="table-wrap">
         <table>
           <thead><tr><th>Product</th><th>Quantity</th><th>Price</th><th>Subtotal</th></tr></thead>
           <tbody>
@@ -67,10 +76,14 @@ export default function InvoicePage() {
             ))}
           </tbody>
         </table>
+        </div>
 
         <div style={{ maxWidth: 320, marginLeft: "auto", marginTop: "1rem" }}>
           <div className="summary-row"><span>Subtotal</span><span>{rwf(order.subtotal)}</span></div>
-          <div className="summary-row"><span>Delivery fee</span><span>{rwf(order.deliveryFee)}</span></div>
+          <div className="summary-row">
+            <span>{order.fulfilmentMethod === "pickup" ? "Pickup handling" : "Delivery fee"}</span>
+            <span>{rwf(order.deliveryFee)}</span>
+          </div>
           <div className="summary-row"><span>Discount</span><span>- {rwf(order.discount)}</span></div>
           <div className="summary-row summary-total"><span>Total</span><span>{rwf(order.total)}</span></div>
         </div>

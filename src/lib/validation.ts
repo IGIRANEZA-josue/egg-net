@@ -23,6 +23,14 @@ export const deliverySchema = z.object({
   district: z.string().trim().min(1, "Please enter the district.").max(60, "Please use 60 characters or fewer."),
   sector: z.string().trim().min(1, "Please enter the sector.").max(60, "Please use 60 characters or fewer."),
   address: z.string().trim().min(5, "Please enter the delivery address.").max(200, "Please use 200 characters or fewer."),
+  // Where the customer really is. Optional, because a phone can refuse
+  // geolocation or a customer can be offline: a missing fix means "collect it",
+  // never "deliver it" (see src/lib/fulfilment.ts).
+  latitude: z.number().min(-90, "That location is not valid.").max(90, "That location is not valid.").nullish(),
+  longitude: z.number().min(-180, "That location is not valid.").max(180, "That location is not valid.").nullish(),
+  // The customer confirms the pickup point on screen. The server still decides
+  // the method itself; this only proves the notice was shown.
+  pickupAcknowledged: z.boolean().optional().default(false),
   instructions: z.string().trim().max(500, "Please use 500 characters or fewer.").optional().default(""),
 });
 

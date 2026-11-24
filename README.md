@@ -220,6 +220,44 @@ List endpoints accept `?page=` and `?pageSize=` (default 50, max 200) and return
 
 ---
 
+## Where we deliver, and where you collect
+
+Delivery is not available everywhere. The checkout asks each customer to confirm
+their location **before** they can pay, and that location decides the whole order:
+
+| Distance from EPR Karugira | What happens | Fee |
+| --- | --- | --- |
+| Up to **3.5 km** | Delivered to the address | 1,000 RWF |
+| Further than 3.5 km | **Collection only** at EPR Karugira, Kigarama, Kicukiro | 500 RWF handling |
+| Location not shared / refused | **Collection only** (fails safe) | 500 RWF handling |
+
+A customer outside the area must tick *"I understand this order will not be
+delivered"* before the Place Order button enables. The server refuses the order
+with **409** if that confirmation is missing, and it calculates the fee itself —
+a forged request cannot buy a 1,000 RWF delivery to anywhere in the country.
+
+**Where the rule lives.** `src/lib/fulfilment.ts` holds the pickup point, the
+origin coordinates, the radius and both fees. The checkout page and
+`POST /api/orders` import the same file, so the screen can only ever show what the
+server will charge. To widen the area, change `DELIVERY_RADIUS_KM` there; to move
+the collection point, change `PICKUP`. Nothing else hard-codes either.
+
+**What is stored.** Each order keeps `fulfilment_method` (`delivery` / `pickup`),
+the customer's `latitude` / `longitude`, and `distance_km`, so an operator can see
+exactly why an order was redirected. Existing orders keep `delivery` and their
+original fee — migration `0003_order_fulfilment.sql` does not re-price history.
+
+**For staff.** Admin → Orders shows a red *Pickup — do not dispatch a rider* panel
+with the customer's distance. Pickup orders still move through the normal status
+steps; `delivered` means "handed over at the counter".
+
+Customer-facing surfaces that change: the green banner says **Ready for
+collection** instead of *Your order is coming*, the order page and invoice show the
+collection point instead of a delivery address, and the cash payment option reads
+*cash on collection*.
+
+---
+
 ## How payments work right now
 
 **No real payment provider is connected.** With `PAYMENT_MODE=mock` (the `.env.example`

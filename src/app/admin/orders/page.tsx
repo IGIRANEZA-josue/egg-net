@@ -5,12 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, rwf, formatDate, statusLabel } from "@/lib/client/api";
 import StatusBadge from "@/components/StatusBadge";
+import { PICKUP, DELIVERY_RADIUS_KM } from "@/lib/fulfilment";
 
 type Order = {
   id: number; orderNumber: string; customerName: string; phone: string; total: number;
   paymentMethod: string; paymentStatus: string; orderStatus: string; createdAt: string;
   cancellationReason: string | null; refundRequired: boolean;
   province: string; district: string; sector: string; address: string; instructions: string | null;
+  fulfilmentMethod: string; distanceKm: number | null;
   subtotal: number; deliveryFee: number; discount: number;
 };
 type Item = { id: number; productName: string; price: number; quantity: number };
@@ -109,7 +111,7 @@ function AdminOrdersContent() {
     <>
       <div className="admin-header">
         <h1 className="page-title" style={{ margin: 0 }}>Orders</h1>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 200 }}>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="admin-filter">
           <option value="">All statuses</option>
           {ORDER_STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
@@ -185,12 +187,30 @@ function AdminOrdersContent() {
               {items.map((i) => (
                 <div className="summary-row" key={i.id}><span>{i.productName} × {i.quantity}</span><span>{rwf(i.price * i.quantity)}</span></div>
               ))}
-              <div className="summary-row"><span>Delivery</span><span>{rwf(selected.deliveryFee)}</span></div>
+              <div className="summary-row">
+                <span>{selected.fulfilmentMethod === "pickup" ? "Pickup handling" : "Delivery"}</span>
+                <span>{rwf(selected.deliveryFee)}</span>
+              </div>
               <div className="summary-row"><span>Discount</span><span>- {rwf(selected.discount)}</span></div>
               <div className="summary-row summary-total"><span>Total</span><span>{rwf(selected.total)}</span></div>
 
-              <h3 style={{ marginTop: "1rem" }}>Delivery</h3>
-              <p>{selected.customerName} · {selected.phone}<br />{selected.address}, {selected.sector}, {selected.district}, {selected.province}</p>
+              <h3 style={{ marginTop: "1rem" }}>
+                {selected.fulfilmentMethod === "pickup" ? "Collection" : "Delivery"}
+              </h3>
+              {selected.fulfilmentMethod === "pickup" ? (
+                <div className="alert alert-warning" style={{ marginBottom: "0.75rem" }}>
+                  <strong>Pickup — do not dispatch a rider.</strong> Customer collects at {PICKUP.name}.
+                  {typeof selected.distanceKm === "number"
+                    ? ` They were ${selected.distanceKm} km away (limit ${DELIVERY_RADIUS_KM} km).`
+                    : " No location was given."}
+                </div>
+              ) : (
+                <p>
+                  {selected.distanceKm != null ? `${selected.distanceKm} km from ${PICKUP.name}. ` : ""}
+                  {selected.address}, {selected.sector}, {selected.district}, {selected.province}
+                </p>
+              )}
+              <p>{selected.customerName} · {selected.phone}</p>
               {selected.instructions && <p><em>{selected.instructions}</em></p>}
               <Link href={`/orders/${selected.id}/invoice`} className="btn btn-outline btn-sm">Print Invoice</Link>
             </>

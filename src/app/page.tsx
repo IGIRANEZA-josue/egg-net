@@ -4,11 +4,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import ProductCard, { type Product } from "@/components/ProductCard";
 import { api } from "@/lib/client/api";
+import { DELIVERY_RADIUS_KM, PICKUP } from "@/lib/fulfilment";
 
 const FEATURES = [
   { title: "Fresh Products", text: "Eggs collected and packed the same week, checked tray by tray." },
   { title: "Easy Ordering", text: "Pick a package, add it to your cart, checkout in under two minutes." },
-  { title: "Reliable Delivery", text: "To your province, district and sector — with status you can follow." },
+  {
+    title: "Delivery or Pickup",
+    text: `We deliver within ${DELIVERY_RADIUS_KM} km of ${PICKUP.name}. Further away? Collect your order there — the checkout tells you before you pay.`,
+  },
   { title: "Secure Payments", text: "Mobile Money, cash on delivery or card. Your order is always confirmed." },
 ];
 

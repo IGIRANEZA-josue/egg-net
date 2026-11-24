@@ -6,12 +6,12 @@ import { db } from "@/db";
 import { orders, orderItems, products } from "@/db/schema";
 import { requireUser, requireAdmin, errorResponse } from "@/lib/auth";
 import {
-  DELIVERY_FEE,
   getActivePromotion,
   getProductPromotions,
   calculateDiscount,
   effectivePrice,
 } from "@/lib/pricing";
+import { decideFulfilment, PICKUP } from "@/lib/fulfilment";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
 import { checkoutSchema, firstIssue } from "@/lib/validation";
 import { parsePagination } from "@/lib/pagination";
@@ -37,6 +37,21 @@ export const POST = withApi(async ({ request, log }) => {
   const parsed = checkoutSchema.safeParse(body);
   if (!parsed.success) return errorResponse(firstIssue(parsed.error));
   const { items, delivery, paymentMethod } = parsed.data;
+
+  // ---- delivery area ----
+  // The customer's coordinates decide delivery vs pickup, and the decision
+  // decides the fee. This is computed here, never trusted from the client: a
+  // forged request can otherwise claim a 1 000 RWF delivery to anywhere. A
+  // missing location is treated as pickup, which is the safe direction.
+  const fulfilment = decideFulfilment(delivery);
+  if (fulfilment.method === "pickup" && !delivery.pickupAcknowledged) {
+    return errorResponse(
+      `This order is for collection at ${PICKUP.name}. Please confirm that you will collect it.`,
+      409,
+      { fulfilment: { method: "pickup", fee: fulfilment.fee, message: fulfilment.message } }
+    );
+  }
+  const deliveryFee = fulfilment.fee;
 
   // ---- idempotency ----
   // A double click, a retry on a flaky connection or a back-and-resubmit must
@@ -111,7 +126,7 @@ export const POST = withApi(async ({ request, log }) => {
 
       const promotion = await getActivePromotion(tx);
       const discount = calculateDiscount(subtotal, promotion);
-      const total = subtotal + DELIVERY_FEE - discount;
+      const total = subtotal + deliveryFee - discount;
 
       // Order number comes from a Postgres sequence (drizzle/0001_*.sql):
       // the old Date.now()-based value collided under concurrency.
@@ -131,8 +146,12 @@ export const POST = withApi(async ({ request, log }) => {
           sector: delivery.sector,
           address: delivery.address,
           instructions: delivery.instructions ?? "",
+          fulfilmentMethod: fulfilment.method,
+          latitude: typeof delivery.latitude === "number" ? delivery.latitude : null,
+          longitude: typeof delivery.longitude === "number" ? delivery.longitude : null,
+          distanceKm: fulfilment.distanceKm,
           subtotal,
-          deliveryFee: DELIVERY_FEE,
+          deliveryFee,
           discount,
           total,
           paymentMethod,
@@ -160,7 +179,7 @@ export const POST = withApi(async ({ request, log }) => {
     });
 
     if (created instanceof NextResponse) return created;
-    return NextResponse.json({ order: created }, { status: 201 });
+    return NextResponse.json({ order: created, fulfilment }, { status: 201 });
   } catch (error) {
     if (error instanceof InsufficientStockError) return errorResponse(error.message, 409);
     // A concurrent request with the same idempotency key lost the unique race.

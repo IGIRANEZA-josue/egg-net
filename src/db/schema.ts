@@ -7,6 +7,7 @@ import {
   text,
   integer,
   boolean,
+  doublePrecision,
   timestamp,
   index,
   uniqueIndex,
@@ -71,6 +72,13 @@ export const orders = pgTable(
     district: text("district").notNull(),
     sector: text("sector").notNull(),
     address: text("address").notNull(),
+    // How the customer gets the eggs: delivered inside the radius, or collected
+    // at PICKUP. Stored per order because the rule can change over time.
+    fulfilmentMethod: text("fulfilment_method").notNull().default("delivery"),
+    // Where the customer actually was when ordering (null if they never shared it).
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    distanceKm: doublePrecision("distance_km"),
     instructions: text("instructions").default(""),
     subtotal: integer("subtotal").notNull(),
     deliveryFee: integer("delivery_fee").notNull(),

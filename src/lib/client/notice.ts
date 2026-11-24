@@ -8,6 +8,9 @@ export type DeliveryNotice = {
   id: number;
   orderNumber: string;
   customerId: number; // only the customer who placed the order sees the notice
+  // "pickup" orders are collected, not delivered, so the banner must not say
+  // the order is on its way.
+  method?: "delivery" | "pickup";
 };
 
 const KEY = "egghub_delivery_notice";
@@ -26,6 +29,7 @@ export function getDeliveryNotice(): DeliveryNotice | null {
       id: notice.id as number,
       orderNumber: notice.orderNumber,
       customerId: Number(notice.customerId) || 0,
+      method: notice.method === "pickup" ? "pickup" : "delivery",
     };
   });
 }

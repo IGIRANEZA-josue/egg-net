@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { orders, orderItems, products, users } from "@/db/schema";
 import { POST as placeOrder } from "@/app/api/orders/route";
 import { PUT as updateStatus } from "@/app/api/orders/[id]/status/route";
-import { authedRequest, makeProduct, makeUser, VALID_DELIVERY } from "@/test/helpers";
+import { authedRequest, makeProduct, makeUser, VALID_DELIVERY, FAR_DELIVERY } from "@/test/helpers";
 
 let customer: { id: number; role: string };
 
@@ -303,5 +303,122 @@ describe("PUT /api/orders/:id/status", () => {
       { params: Promise.resolve({ id: String(orderId) }) }
     );
     expect(response.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE DELIVERY AREA
+// Delivery is only for customers inside the radius around EPR Karugira.
+// Everyone else collects, pays the pickup fee, and must confirm they will come.
+// ---------------------------------------------------------------------------
+describe("POST /api/orders - delivery area", () => {
+  it("delivers inside the radius and stores the distance", async () => {
+    const product = await makeProduct({ price: 1500, stock: 10 });
+
+    const response = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 1 }],
+        delivery: VALID_DELIVERY,
+        paymentMethod: "cash",
+      })
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      order: { id: number; fulfilmentMethod: string; deliveryFee: number; distanceKm: number | null; latitude: number | null };
+      fulfilment: { method: string };
+    };
+    expect(body.order.fulfilmentMethod).toBe("delivery");
+    expect(body.fulfilment.method).toBe("delivery");
+    expect(body.order.deliveryFee).toBe(1000);
+    expect(body.order.distanceKm).toBeLessThan(1);
+    expect(body.order.latitude).toBeCloseTo(VALID_DELIVERY.latitude, 5);
+  });
+
+  it("REFUSES an outside-the-radius order that has not confirmed pickup", async () => {
+    const product = await makeProduct({ price: 1500, stock: 10 });
+
+    const response = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 1 }],
+        delivery: { ...FAR_DELIVERY, pickupAcknowledged: false },
+        paymentMethod: "cash",
+      })
+    );
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { message: string; fulfilment: { method: string; fee: number } };
+    expect(body.message).toMatch(/collection at EPR Karugira/i);
+    expect(body.fulfilment.method).toBe("pickup");
+    expect(body.fulfilment.fee).toBe(500);
+
+    // And nothing was written or reserved.
+    const rows = await db.select().from(orders).where(eq(orders.customerId, customer.id));
+    expect(rows).toHaveLength(0);
+    const [after] = await db.select().from(products).where(eq(products.id, product.id));
+    expect(after.stock).toBe(10);
+  });
+
+  it("accepts an outside-the-radius order once pickup is confirmed, at the pickup fee", async () => {
+    const product = await makeProduct({ price: 1500, stock: 10 });
+
+    const response = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 2 }],
+        delivery: { ...FAR_DELIVERY, pickupAcknowledged: true },
+        paymentMethod: "cash",
+      })
+    );
+
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as {
+      order: { id: number; fulfilmentMethod: string; deliveryFee: number; subtotal: number; total: number };
+    };
+    expect(body.order.fulfilmentMethod).toBe("pickup");
+    expect(body.order.deliveryFee).toBe(500);
+    // 2 x 1500 + 500 pickup handling, not the 1000 delivery fee.
+    expect(body.order.total).toBe(1500 * 2 + 500);
+  });
+
+  it("treats a missing location as pickup and still requires confirmation", async () => {
+    const product = await makeProduct({ price: 1500, stock: 10 });
+    const { latitude: _lat, longitude: _lon, ...noCoords } = VALID_DELIVERY;
+    void _lat;
+    void _lon;
+
+    const refused = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 1 }],
+        delivery: noCoords,
+        paymentMethod: "cash",
+      })
+    );
+    expect(refused.status).toBe(409);
+
+    const accepted = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 1 }],
+        delivery: { ...noCoords, pickupAcknowledged: true },
+        paymentMethod: "cash",
+      })
+    );
+    expect(accepted.status).toBe(201);
+    const body = (await accepted.json()) as { order: { fulfilmentMethod: string; distanceKm: number | null } };
+    expect(body.order.fulfilmentMethod).toBe("pickup");
+    expect(body.order.distanceKm).toBeNull();
+  });
+
+  it("ignores a client that lies about being inside the area", async () => {
+    // No coordinates at all, but the client claims delivery was agreed: the
+    // server must still refuse without a confirmation and must not deliver.
+    const product = await makeProduct({ price: 1500, stock: 10 });
+    const response = await placeOrder(
+      await checkout({
+        items: [{ productId: product.id, quantity: 1 }],
+        delivery: { ...VALID_DELIVERY, latitude: null, longitude: null, pickupAcknowledged: false },
+        paymentMethod: "cash",
+      })
+    );
+    expect(response.status).toBe(409);
   });
 });

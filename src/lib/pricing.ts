@@ -3,8 +3,10 @@ import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { promotions } from "@/db/schema";
 
-// Flat delivery fee for now. Multiple delivery zones can be added later.
-export const DELIVERY_FEE = 1000;
+// Delivery and pickup fees live in src/lib/fulfilment.ts together with the
+// delivery area, so the checkout, the server and the order record all read the
+// same numbers. Re-exported here because this is where callers expect pricing.
+export { DELIVERY_FEE, PICKUP_HANDLING_FEE } from "@/lib/fulfilment";
 
 /**
  * Either the pool-level `db` or a transaction handle. Pricing reads inside a

@@ -3,6 +3,45 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — delivery area and collection (EPR Karugira)
+
+Delivery used to be unconditional: anyone in the country could check out, was
+charged the flat 1,000 RWF fee, and expected a rider. Now the order is delivered
+only inside a small area around EPR Karugira; everyone else collects.
+
+### Added
+
+- **Location confirmation at checkout**, step 1 of 3. `navigator.geolocation` with a
+  manual latitude/longitude fallback (permission refused, no fix, older browser,
+  or a customer who prefers to paste coordinates). The checkout states the verdict
+  before payment: *delivery* or *pickup at EPR Karugira*, with distance, directions
+  and opening hours.
+- `src/lib/fulfilment.ts` — the pickup point, origin, radius (3.5 km), both fees and
+  a Haversine `distanceKm()`, shared by the checkout and the order API.
+- Order columns `fulfilment_method`, `latitude`, `longitude`, `distance_km`
+  (migration `0003_order_fulfilment.sql`, plus a CHECK constraint on the method).
+- 17 new tests: distance maths against real coordinates (Merez, Gikondo, Kicukiro
+  Centre, Kimironko, Huye), the fail-safe for a missing location, the inclusive
+  radius boundary, and four API tests including *refused order leaves stock untouched*.
+
+### Changed
+
+- **The server, not the form, decides the fee.** `POST /api/orders` recomputes
+  delivery vs pickup from the submitted coordinates. An outside-the-area order
+  without `pickupAcknowledged` returns **409** and writes nothing.
+- Pickup orders pay a **500 RWF handling fee** instead of the 1,000 RWF delivery fee,
+  and the button reads *Confirm pickup order*.
+- The green site banner says **Ready for collection** for pickup orders instead of
+  *Your order is coming*; the order page and invoice show the collection point, and
+  cash reads *cash on collection*.
+- Admin → Orders shows *Pickup — do not dispatch a rider* with the customer's distance.
+- Home and About copy now describe the area and derive the number from the config.
+
+### Fixed
+
+- `errorResponse()` can carry extra fields (used to return the pickup decision with
+  a 409) — previously only a `message`.
+
 ## Unreleased — responsive / mobile pass
 
 The site already had a responsive layer; this pass makes it hold up on real

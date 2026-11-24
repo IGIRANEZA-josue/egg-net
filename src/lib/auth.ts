@@ -137,8 +137,8 @@ export async function getUserFromRequest(request: Request): Promise<AuthUser | n
 }
 
 // Small helpers to send JSON error responses
-export function errorResponse(message: string, status = 400) {
-  return NextResponse.json({ message }, { status });
+export function errorResponse(message: string, status = 400, extra?: Record<string, unknown>) {
+  return NextResponse.json({ message, ...extra }, { status });
 }
 
 // Use inside a route: `const user = await requireUser(request); if (user instanceof NextResponse) return user;`

@@ -6,14 +6,28 @@ import { db } from "@/db";
 import { users, products, orders, orderItems } from "@/db/schema";
 import { hashPassword, createToken } from "@/lib/auth";
 
+// Coordinates inside the delivery radius (Merez / Gikondo, Kicukiro), because
+// POST /api/orders now decides delivery vs pickup from the customer's location.
 export const VALID_DELIVERY = {
   fullName: "Aline Uwase",
   phone: "0788123456",
   province: "Kigali City",
-  district: "Gasabo",
-  sector: "Remera",
-  address: "KG 11 Ave, house 24",
+  district: "Kicukiro",
+  sector: "Kigarama",
+  address: "KK 31 Ave, house 24",
+  latitude: -1.9702037,
+  longitude: 30.0771302,
   instructions: "",
+};
+
+// Far outside the radius (Kimironko, Gasabo): must be a pickup-only order.
+export const FAR_DELIVERY = {
+  ...VALID_DELIVERY,
+  district: "Gasabo",
+  sector: "Kimironko",
+  address: "KG 11 Ave, house 24",
+  latitude: -1.937,
+  longitude: 30.109,
 };
 
 export async function makeUser(overrides: Partial<{ email: string; role: "admin" | "customer"; name: string }> = {}) {
