@@ -3,6 +3,33 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — admin portal
+
+Admins had to know that `/admin` existed. There was no link anywhere in the site.
+
+### Added
+
+- **Admin portal in the footer**, on every page. Signed out it is an *Admin portal
+  →* button to `/login?next=/admin`; signed in as an admin it becomes a menu of
+  every admin screen plus sign-out. It asks `/api/auth/profile` rather than
+  trusting `localStorage`, and the admin layout still re-checks the role per
+  request.
+- **Footer navigation**: Shop, EggHub and Staff columns (previously two paragraphs
+  with no links), stacking on phones.
+- **Dashboard is a control centre**: every stat links to the screen that manages
+  it, six capability cards, and two new panels — accounts by role
+  (customers / admins / total) and **delivery vs pickup** with pickups still
+  waiting at the counter.
+- **Customer management**: `/admin/customers` can now issue a one-time password
+  (the API already existed but was unreachable from the UI). Shows total spent.
+- Three dashboard tests: role counts, delivery/pickup split (excluding cancelled),
+  and admin-only access.
+
+### Changed
+
+- Dashboard "Customers" stat now sits beside a **Users** figure, so admins are
+  counted too — the API previously counted customers only.
+
 ## Unreleased — delivery area and collection (EPR Karugira)
 
 Delivery used to be unconditional: anyone in the country could check out, was

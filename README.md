@@ -220,6 +220,58 @@ List endpoints accept `?page=` and `?pageSize=` (default 50, max 200) and return
 
 ---
 
+## The admin portal
+
+Admins enter from the **Staff** column in the site footer, on every page. The
+control is in `src/components/AdminPortal.tsx`:
+
+- **Signed out** — a single *Admin portal →* button linking to
+  `/login?next=/admin`. Logging in as an admin lands straight on `/admin`.
+- **Signed in as admin** — the button turns into a menu listing every admin screen
+  (Dashboard, Products, Add product, Orders, Customers, Promotions, Sales, My
+  account) plus a sign-out. It opens upwards because it sits at the bottom of the
+  page, and it stacks full width on a phone.
+
+The menu is a door, not a lock: it asks `/api/auth/profile` who you are, and
+`src/app/admin/layout.tsx` re-checks the role on every request, so clearing or
+editing `localStorage` does not get anyone in.
+
+### What an admin can do
+
+| Screen | Capability |
+| --- | --- |
+| `/admin` dashboard | Collected vs pending revenue, orders, delivered, **user counts by role** (customers + admins), product availability, low stock, recent orders, and a **delivery vs pickup** split with pickups still at the counter |
+| `/admin/products` | Edit name, price, package, description, image; restock inline; toggle availability; **delete** (a product that appears on an order is hidden instead, so invoices stay intact) |
+| `/admin/products/new` | Add a product with an uploaded photo |
+| `/admin/orders` | Filter, open an order, move it through the legal status steps, set payment status, cancel with a reason |
+| `/admin/customers` | Every account with orders and total spent; **issue a one-time password** for a customer who is locked out |
+| `/admin/promotions` | Store-wide or product-level discounts |
+| `/admin/sales` | Collected revenue, 7-day chart, best sellers |
+
+Every stat on the dashboard is a link into the screen that manages it.
+
+### Admin credentials
+
+The seed never invents a password (`ADMIN_EMAIL` + `ADMIN_PASSWORD` are required,
+and well-known demo values are rejected). For **this development database** the
+admin account is:
+
+```
+URL:      http://localhost:3000/login
+Email:    boss@egghub.rw
+Password: EggHubAdmin2026!
+```
+
+Change it from **/profile → Change password** after the first login. It is not
+stored in the repository and is not read from the environment at runtime — it is
+just a bcrypt hash in the local database. A production deploy must set its own
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` and re-seed.
+
+If a customer is locked out, reset it from `/admin/customers` — the temporary
+password is shown once and must be changed at next login.
+
+---
+
 ## Where we deliver, and where you collect
 
 Delivery is not available everywhere. The checkout asks each customer to confirm

@@ -25,6 +25,8 @@ export const GET = withApi(async ({ request }) => {
     [productStats],
     recent,
     lowStock,
+    [userCounts],
+    [fulfilmentCounts],
   ] = await Promise.all([
     // "Collected" is money actually received. Before this, the dashboard summed
     // every non-cancelled order regardless of paymentStatus - including mock
@@ -58,6 +60,25 @@ export const GET = withApi(async ({ request }) => {
       .where(and(eq(products.isAvailable, true), isNull(products.deletedAt), sql`${products.stock} <= ${LOW_STOCK_LIMIT}`))
       .orderBy(products.stock)
       .limit(20),
+    // Everyone who can log in, split by role - the dashboard used to count
+    // customers only, so an operator could not see how many admins existed.
+    db
+      .select({
+        customers: sql<number>`count(*) filter (where ${users.role} = 'customer')::int`,
+        admins: sql<number>`count(*) filter (where ${users.role} = 'admin')::int`,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(users),
+    // Delivery vs collection, so staff know how much of the day is dispatch.
+    db
+      .select({
+        deliveries: sql<number>`count(*) filter (where ${orders.fulfilmentMethod} = 'delivery')::int`,
+        pickups: sql<number>`count(*) filter (where ${orders.fulfilmentMethod} = 'pickup')::int`,
+        // Pickups still waiting at the counter.
+        awaitingPickup: sql<number>`count(*) filter (where ${orders.fulfilmentMethod} = 'pickup' and ${orders.orderStatus} in ('pending','confirmed','preparing','out_for_delivery'))::int`,
+      })
+      .from(orders)
+      .where(notCancelled),
   ]);
 
   // Last 7 days of collected revenue, bucketed in Rwanda local time.
@@ -87,5 +108,12 @@ export const GET = withApi(async ({ request }) => {
     recentOrders: recent,
     lowStockProducts: lowStock,
     dailySales: daily,
+    // Accounts, by role. totalCustomers is set above.
+    totalAdmins: userCounts?.admins ?? 0,
+    totalUsers: userCounts?.total ?? 0,
+    // Delivery vs collection.
+    deliveries: fulfilmentCounts?.deliveries ?? 0,
+    pickups: fulfilmentCounts?.pickups ?? 0,
+    awaitingPickup: fulfilmentCounts?.awaitingPickup ?? 0,
   });
 });

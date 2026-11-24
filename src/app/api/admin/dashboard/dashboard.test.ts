@@ -74,3 +74,58 @@ describe("GET /api/admin/sales", () => {
     expect(body.dailySales.reduce((sum, d) => sum + d.total, 0)).toBe(4000);
   });
 });
+
+// The dashboard is the admin's control centre. These counts are what an operator
+// reads before deciding what to do, so they must be right - and the user counts
+// must include admins, not just customers.
+describe("GET /api/admin/dashboard - users and fulfilment", () => {
+  it("counts every account, split by role", async () => {
+    const admin = await makeUser({ role: "admin" });
+    await makeUser();
+    await makeUser();
+    await makeUser();
+
+    const response = await dashboard(
+      await authedRequest(admin, "http://localhost/api/admin/dashboard")
+    );
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as {
+      totalUsers: number; totalCustomers: number; totalAdmins: number;
+    };
+    expect(body.totalAdmins).toBe(1);
+    expect(body.totalCustomers).toBe(3);
+    expect(body.totalUsers).toBe(4);
+    expect(body.totalUsers).toBe(body.totalCustomers + body.totalAdmins);
+  });
+
+  it("separates deliveries from pickups and counts pickups still at the counter", async () => {
+    const admin = await makeUser({ role: "admin" });
+    const customer = await makeUser();
+
+    await order(customer.id, { fulfilmentMethod: "delivery", orderStatus: "delivered" });
+    await order(customer.id, { fulfilmentMethod: "pickup", orderStatus: "pending" });
+    await order(customer.id, { fulfilmentMethod: "pickup", orderStatus: "preparing" });
+    await order(customer.id, { fulfilmentMethod: "pickup", orderStatus: "delivered" });
+    // A cancelled pickup is not waiting for anyone.
+    await order(customer.id, { fulfilmentMethod: "pickup", orderStatus: "cancelled" });
+
+    const response = await dashboard(
+      await authedRequest(admin, "http://localhost/api/admin/dashboard")
+    );
+    const body = (await response.json()) as {
+      deliveries: number; pickups: number; awaitingPickup: number;
+    };
+    expect(body.deliveries).toBe(1);
+    expect(body.pickups).toBe(3);
+    expect(body.awaitingPickup).toBe(2);
+  });
+
+  it("is still admin-only", async () => {
+    const customer = await makeUser();
+    const response = await dashboard(
+      await authedRequest(customer, "http://localhost/api/admin/dashboard")
+    );
+    expect(response.status).toBe(403);
+  });
+});
