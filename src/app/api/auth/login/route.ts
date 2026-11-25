@@ -51,6 +51,15 @@ export const POST = withApi(async ({ request }) => {
   const ok = await comparePassword(password, user.password);
   if (!ok) return errorResponse("Invalid email or password.", 401);
 
+  // A suspended account keeps its history but cannot get in. Checked AFTER the
+  // password so this cannot be used to discover which emails exist.
+  if (!user.isActive) {
+    return errorResponse(
+      "This account has been deactivated. Contact support if you think that is a mistake.",
+      403
+    );
+  }
+
   const token = await createToken(user.id, user.role);
   const { password: _pw, ...safeUser } = user;
   void _pw;

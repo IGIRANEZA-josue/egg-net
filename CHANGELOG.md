@@ -3,6 +3,80 @@
 All notable changes to EggHub Rwanda. Format based on Keep a Changelog; this
 project does not yet publish versioned releases.
 
+## Unreleased — complete admin dashboard
+
+The admin area could manage products, orders, promotions and customers, but it
+had no user administration, no inventory history, and no way in from the site.
+
+### Added — user management (`/admin/users`)
+
+- Every account, customers and admins, with name, email, phone, registration
+  date, role, status, order count and total spent. Search across name/email/
+  phone, filter by role and by active state.
+- Open an account for a profile with its ten most recent orders and lifetime
+  totals. Edit name, email, phone, address and role.
+- **Deactivate** an account: it keeps every record, but `POST /api/auth/login`
+  now refuses it with a 403 after the password check (so the response cannot be
+  used to discover which emails exist). Reactivating restores access.
+- Delete an account — only when it has no order history, because orders are
+  `ON DELETE RESTRICT`. The API explains that and points at deactivation rather
+  than failing with a foreign-key error.
+- Three guards against locking the shop: an admin cannot deactivate or demote
+  themselves, and the last active admin cannot be demoted.
+
+### Added — inventory (`/admin/inventory`)
+
+- New `stock_movements` ledger (migration `0004`): direction, quantity, reason,
+  source, note, optional order, who recorded it, when.
+- **Stock in**: choose a listing, quantity, source, date (backdatable for a
+  delivery recorded late) and note. **Stock out**: quantity and reason. Both
+  change `products.stock` and write the ledger row in one transaction.
+- Stock can never go negative — the decrement carries `stock >= quantity` in the
+  `UPDATE` itself, so a concurrent request cannot slip past a stale read.
+- Every other path that moves stock now writes the ledger too: a checkout
+  records the sale, a cancellation records the return, creating a listing records
+  its opening stock, and editing a listing's stock number records the difference
+  as a correction. `backfillOpeningBalances()` gives pre-existing stock an
+  opening balance once, so the totals start complete rather than at zero.
+- Egg listings gained a `category` (chicken / duck / quail / other, free text).
+
+### Added — the overview (`/admin`)
+
+- Stat cards for users, listings, total eggs on hand, orders, eggs received,
+  eggs out, collected revenue and ledger size.
+- Stock health, a dependency-free 7-day revenue bar chart, a recent inventory
+  activity feed and recent orders.
+
+### Added — entry point
+
+- `AdminAuthNav`: a sidebar on desktop that becomes a horizontally scrolling tab
+  strip on a phone, shared by every admin screen.
+- `/admin/login`: a separate staff sign-in page. A valid non-admin account is
+  logged straight back out with "That account is not an administrator."
+- The footer's EggHub column ends with an independent **Admin** link to
+  `/admin/login` — its own list item, never inside a dropdown.
+
+### Fixed
+
+- **Duplicate-key handling was broken everywhere.** Drizzle wraps driver errors
+  in `DrizzleQueryError`, so the `code === "23505"` checks in `register`,
+  `orders` and `reviews` never matched and a duplicate registration returned 500
+  instead of "email already in use". New `src/lib/db-errors.ts` unwraps
+  `error.cause` (and nested causes) and all four call sites use it.
+- **Creating a listing would have doubled its stock** once opening stock was
+  recorded: the row was inserted with stock and then the ledger added it again.
+  The insert now starts at 0 and the ledger applies the opening quantity.
+- The test truncate helper now includes `stock_movements` and retries briefly —
+  PGlite multiplexes one connection, so a route's deliberately-unawaited query
+  could otherwise fail the next test with "Connection terminated unexpectedly".
+
+### Tests
+
+33 new: 13 inventory (stock in/out, the negative guard, backdating, the ledger,
+admin-only), 14 user management (search, filters, edit, duplicate email,
+deactivation blocking login, self-protection guards, delete rules, admin-only)
+and 7 ledger invariants across products and orders.
+
 ## Unreleased — no admin entry point on the public site
 
 - **Removed the footer admin portal.** `src/components/AdminPortal.tsx` and the

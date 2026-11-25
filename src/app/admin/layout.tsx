@@ -7,6 +7,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { api, saveUser, type User } from "@/lib/client/api";
+import AdminNav from "@/components/AdminNav";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         setAllowed(true);
       })
       .catch(() => {
-        if (active) router.replace("/login?next=/admin");
+        if (active) router.replace("/admin/login");
       });
     return () => {
       active = false;
@@ -33,5 +34,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, [router]);
 
   if (!allowed) return <div className="page container"><p className="muted">Checking access...</p></div>;
-  return <div className="page container">{children}</div>;
+
+  return (
+    <div className="page container admin-shell">
+      <AdminNav />
+      <div className="admin-main">{children}</div>
+    </div>
+  );
 }

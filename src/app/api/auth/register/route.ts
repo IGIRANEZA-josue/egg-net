@@ -7,6 +7,7 @@ import { hashPassword, createToken, errorResponse, setAuthCookie } from "@/lib/a
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
 import { registrationSchema, firstIssue, passwordWeakness } from "@/lib/validation";
 import { checkRateLimit, clientIp } from "@/lib/rate-limit";
+import { isPgError, UNIQUE_VIOLATION } from "@/lib/db-errors";
 
 const MAX_REGISTRATIONS_PER_IP = 5;
 const WINDOW_SECONDS = 60 * 60;
@@ -61,7 +62,7 @@ export const POST = withApi(async ({ request, log }) => {
     return setAuthCookie(NextResponse.json({ user }, { status: 201 }), token);
   } catch (error) {
     // Unique violation from a concurrent registration with the same email.
-    if (typeof error === "object" && error && "code" in error && (error as { code: string }).code === "23505") {
+    if (isPgError(error, UNIQUE_VIOLATION)) {
       return errorResponse("Could not create your account. Please check your details.", 409);
     }
     log("registration failed", error);

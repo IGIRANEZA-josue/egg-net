@@ -222,14 +222,17 @@ List endpoints accept `?page=` and `?pageSize=` (default 50, max 200) and return
 
 ## The admin area
 
-The admin screens are **not linked from the public site** — there is no admin
-entry point in the footer or navigation. Staff go to `/admin` directly, or to
-`/login?next=/admin` if they are signed out; logging in as an admin lands on
-`/admin`.
+Staff enter through the **Admin** link in the footer — its own link in the EggHub
+column, not inside a menu — which goes to `/admin/login`. Signing in there
+redirects to `/admin`. A customer who tries that page is refused with "That
+account is not an administrator" rather than being quietly logged in.
 
-Access is still enforced server-side: `src/app/admin/layout.tsx` checks the role
-on every request, and every `/api/admin/*` route requires an admin session, so
-knowing the URL is not enough to get in.
+Admins can also go straight to `/admin`, or to `/login?next=/admin`.
+
+Access is enforced server-side at every layer: `src/app/admin/layout.tsx` checks
+the role on each request, and every `/api/admin/*` route calls `requireAdmin`,
+which returns 401 when signed out and 403 for a customer. Knowing a URL gets
+nobody in.
 
 ### What an admin can do
 
@@ -240,6 +243,8 @@ knowing the URL is not enough to get in.
 | `/admin/products/new` | Add a product with an uploaded photo |
 | `/admin/orders` | Filter, open an order, move it through the legal status steps, set payment status, cancel with a reason |
 | `/admin/customers` | Every account with orders and total spent; **issue a one-time password** for a customer who is locked out |
+| `/admin/users` | Every account: search and filter by role/status, open a profile with its order history, edit details, **deactivate** (blocks sign-in, keeps history) or delete |
+| `/admin/inventory` | **Stock in** (quantity, source, date, note) and **stock out** (quantity, reason); the full movement ledger with filters, and totals for received / out / on hand |
 | `/admin/promotions` | Store-wide or product-level discounts |
 | `/admin/sales` | Collected revenue, 7-day chart, best sellers |
 

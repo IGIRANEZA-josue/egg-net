@@ -26,6 +26,10 @@ export const users = pgTable(
     address: text("address").default(""),
     // true while an account still uses a seeded/demo password; the UI nags until it changes
     mustChangePassword: boolean("must_change_password").notNull().default(false),
+    // A suspended account keeps all of its history but cannot log in. Deleting
+    // a customer with orders is impossible anyway (orders.customer_id is
+    // ON DELETE RESTRICT), so suspension is the real "remove from the shop".
+    isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [index("users_role_idx").on(table.role)]
@@ -40,6 +44,9 @@ export const products = pgTable(
     description: text("description").default(""),
     price: integer("price").notNull(), // price in RWF (whole numbers)
     packageSize: integer("package_size").notNull().default(30), // number of eggs
+    // Kind of egg: "Chicken eggs", "Duck eggs", ... Free text so an admin can
+    // add a kind without a migration; the product form suggests the known ones.
+    category: text("category").notNull().default("Chicken eggs"),
     stock: integer("stock").notNull().default(0),
     image: text("image").default(""),
     isAvailable: boolean("is_available").notNull().default(true),
@@ -125,6 +132,34 @@ export const orderItems = pgTable(
   (table) => [
     index("order_items_order_id_idx").on(table.orderId),
     index("order_items_product_id_idx").on(table.productId),
+  ]
+);
+
+// ---------- STOCK MOVEMENTS (inventory ledger) ----------
+// Every change to products.stock that is not a checkout or a cancellation is
+// recorded here: farm deliveries, spoilage, corrections. Checkouts and
+// cancellations also write a row, so the ledger explains the stock number
+// completely rather than partially.
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: serial("id").primaryKey(),
+    direction: text("direction").notNull(), // "in" | "out"
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "restrict" }),
+    quantity: integer("quantity").notNull(), // always positive; direction carries the sign
+    reason: text("reason").notNull().default(""),
+    source: text("source").notNull().default(""),
+    note: text("note").default(""),
+    orderId: integer("order_id").references(() => orders.id, { onDelete: "set null" }),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("stock_movements_product_id_idx").on(table.productId),
+    index("stock_movements_created_at_idx").on(table.createdAt),
+    index("stock_movements_direction_idx").on(table.direction),
   ]
 );
 
@@ -245,6 +280,13 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 export const productsRelations = relations(products, ({ many }) => ({
   orderItems: many(orderItems),
   reviews: many(reviews),
+  stockMovements: many(stockMovements),
+}));
+
+export const stockMovementsRelations = relations(stockMovements, ({ one }) => ({
+  product: one(products, { fields: [stockMovements.productId], references: [products.id] }),
+  order: one(orders, { fields: [stockMovements.orderId], references: [orders.id] }),
+  createdByUser: one(users, { fields: [stockMovements.createdBy], references: [users.id] }),
 }));
 
 export const reviewsRelations = relations(reviews, ({ one }) => ({

@@ -9,6 +9,7 @@ import { requireAdmin, errorResponse } from "@/lib/auth";
 import { readProductBody } from "@/lib/validate-product";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
 import { parseId } from "@/lib/parse-id";
+import { stockIn, stockOut } from "@/lib/inventory";
 
 type Params = { id: string };
 
@@ -36,13 +37,53 @@ export const PUT = withApi<Params>(async ({ request, params, log }) => {
   if (result.error || !result.data) return errorResponse(result.error || "Invalid data.");
 
   try {
-    const [product] = await db
-      .update(products)
-      .set({ ...result.data, updatedAt: new Date() })
-      .where(and(eq(products.id, id), isNull(products.deletedAt)))
-      .returning();
-    if (!product) return errorResponse("Product not found.", 404);
-    return NextResponse.json({ product });
+    const outcome = await db.transaction(async (tx) => {
+      const [before] = await tx
+        .select({ stock: products.stock })
+        .from(products)
+        .where(and(eq(products.id, id), isNull(products.deletedAt)))
+        .for("update");
+      if (!before) return null;
+
+      // Stock is NOT written directly. The difference is applied through the
+      // ledger below, which is the only place allowed to move stock - that way
+      // a number typed into the edit form is recorded as a correction instead
+      // of appearing from nowhere (or, worse, being checked against a value
+      // that was already overwritten).
+      const { stock: nextStock, ...rest } = result.data;
+
+      const [product] = await tx
+        .update(products)
+        .set({ ...rest, updatedAt: new Date() })
+        .where(and(eq(products.id, id), isNull(products.deletedAt)))
+        .returning();
+
+      const delta = nextStock - before.stock;
+      if (delta > 0) {
+        await stockIn(tx, {
+          productId: id,
+          quantity: delta,
+          reason: "Stock count correction",
+          source: "Listing edited",
+          createdBy: admin.id,
+        });
+      } else if (delta < 0) {
+        await stockOut(tx, {
+          productId: id,
+          quantity: -delta,
+          reason: "Stock count correction",
+          source: "Listing edited",
+          createdBy: admin.id,
+        });
+      }
+
+      // Re-read so the response carries the stock the ledger just wrote.
+      const [fresh] = await tx.select().from(products).where(eq(products.id, id));
+      return fresh ?? product;
+    });
+
+    if (!outcome) return errorResponse("Product not found.", 404);
+    return NextResponse.json({ product: outcome });
   } catch (error) {
     log("product update failed", error);
     throw new ApiError("Could not update product.", 500);

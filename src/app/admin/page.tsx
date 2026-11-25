@@ -1,15 +1,17 @@
 "use client";
-// ADMIN DASHBOARD — the control centre.
-// Numbers first, then the things an admin actually does: add a product, edit or
-// delete one, work the order queue, manage customers.
+// ADMIN OVERVIEW — one screen that answers "how is the shop doing?".
+// Users, eggs, stock, movements and money, then the most recent activity.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, rwf, formatDate } from "@/lib/client/api";
 import StatusBadge from "@/components/StatusBadge";
 
+type Movement = {
+  id: number; direction: string; quantity: number; reason: string;
+  source: string; createdAt: string; productName: string; orderNumber: string | null;
+};
+
 type Dashboard = {
-  // totalSales is money actually COLLECTED (paymentStatus = paid).
-  // pendingSales is owed but not received. Neither includes cancelled orders.
   totalSales: number; pendingSales: number;
   totalOrders: number; totalCustomers: number; totalAdmins: number; totalUsers: number;
   totalProducts: number; availableProducts: number;
@@ -17,116 +19,162 @@ type Dashboard = {
   deliveries: number; pickups: number; awaitingPickup: number;
   lowStockProducts: { id: number; name: string; stock: number }[];
   recentOrders: { id: number; orderNumber: string; customerName: string; total: number; orderStatus: string; createdAt: string }[];
+  totalStock: number; totalListings: number; activeListings: number;
+  lowStockCount: number; outOfStockCount: number; stockValue: number;
+  totalStockIn: number; totalStockOut: number; movementCount: number;
+  recentMovements: Movement[];
+  dailySales: { day: string; total: number }[];
 };
-
-const TOOLS = [
-  { href: "/admin/products/new", title: "Add product", text: "Name, price, package size, stock and photo." },
-  { href: "/admin/products", title: "Edit or delete products", text: "Change prices, restock, hide or remove a product." },
-  { href: "/admin/orders", title: "Manage orders", text: "Confirm, dispatch, deliver, or cancel with a reason." },
-  { href: "/admin/customers", title: "Manage customers", text: "See every account and reset a forgotten password." },
-  { href: "/admin/promotions", title: "Discounts & promotions", text: "Store-wide or product-level offers." },
-  { href: "/admin/sales", title: "Sales report", text: "Collected revenue and best sellers." },
-];
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Dashboard>("/api/admin/dashboard").then(setData).catch((e) => setError(e.message));
+    api<Dashboard>("/api/admin/dashboard")
+      .then(setData)
+      .catch((e) => setError((e as Error).message));
   }, []);
 
   if (error) return <div className="alert alert-error" role="alert">{error}</div>;
-  if (!data) return <p className="muted">Loading dashboard...</p>;
+  if (!data) return <p className="muted">Loading the dashboard...</p>;
 
-  const stats = [
-    { label: "Collected revenue", value: rwf(data.totalSales), href: "/admin/sales" },
-    { label: "Awaiting payment", value: rwf(data.pendingSales), href: "/admin/orders" },
-    { label: "Orders", value: data.totalOrders, href: "/admin/orders" },
-    { label: "Pending orders", value: data.pendingOrders, href: "/admin/orders" },
-    { label: "Users", value: `${data.totalUsers}`, sub: `${data.totalCustomers} customers · ${data.totalAdmins} admin${data.totalAdmins === 1 ? "" : "s"}`, href: "/admin/customers" },
-    { label: "Products", value: `${data.availableProducts} / ${data.totalProducts}`, sub: "available / total", href: "/admin/products" },
-    { label: "Low stock", value: data.lowStockProducts.length, href: "/admin/products" },
-    { label: "Delivered", value: data.deliveredOrders, href: "/admin/orders" },
-  ];
+  // The chart needs a bar per day even when nothing was sold.
+  const days = data.dailySales ?? [];
+  const peak = Math.max(1, ...days.map((d) => d.total));
 
   return (
     <>
-      <div className="admin-header">
-        <h1 className="page-title" style={{ margin: 0 }}>Admin Dashboard</h1>
-        <Link href="/admin/products/new" className="btn btn-primary">+ Add Product</Link>
+      <div className="section-head" style={{ marginBottom: "1.5rem" }}>
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Overview</h1>
+        <Link href="/admin/inventory" className="btn btn-outline btn-sm">Record stock</Link>
       </div>
 
-      {/* Numbers, each one a link into the screen that manages it. */}
-      <div className="grid grid-4">
-        {stats.map((s) => (
-          <Link key={s.label} href={s.href} className="card stat-card stat-card-link">
-            <div className="value">{s.value}</div>
-            <div className="label">{s.label}</div>
-            {s.sub && <div className="stat-sub">{s.sub}</div>}
-          </Link>
-        ))}
-      </div>
-
-      {/* Delivery vs collection — the shape of the day. */}
-      <div className="card fulfilment-split" style={{ marginTop: "1.5rem" }}>
-        <h3>Today&apos;s fulfilment</h3>
-        <div className="fulfilment-split-row">
-          <div>
-            <span className="value">{data.deliveries}</span>
-            <span className="label">Deliveries</span>
-          </div>
-          <div>
-            <span className="value">{data.pickups}</span>
-            <span className="label">Pickups</span>
-          </div>
-          <div>
-            <span className="value">{data.awaitingPickup}</span>
-            <span className="label">Waiting at the counter</span>
-          </div>
+      {/* ---- the numbers ---- */}
+      <div className="grid grid-4 admin-stats">
+        <div className="card stat-card">
+          <div className="value">{data.totalUsers}</div>
+          <div className="label">Registered users</div>
+          <p className="stat-sub">{data.totalCustomers} customers · {data.totalAdmins} admins</p>
         </div>
-        <p className="muted small">
-          Pickups are customers outside the delivery area collecting at EPR Karugira.
-          Open an order to see their distance and directions.
-        </p>
-      </div>
-
-      {/* The management shortcuts, as cards rather than a list of links. */}
-      <h2 className="section-title" style={{ fontSize: "1.5rem", margin: "2.5rem 0 1rem" }}>What you can manage</h2>
-      <div className="grid grid-3">
-        {TOOLS.map((t) => (
-          <Link key={t.href + t.title} href={t.href} className="card tool-card">
-            <strong>{t.title}</strong>
-            <span>{t.text}</span>
-            <span className="tool-arrow" aria-hidden="true">→</span>
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid grid-2" style={{ marginTop: "2rem" }}>
-        <div className="card">
-          <h3>⚠ Low Stock Products</h3>
-          {data.lowStockProducts.length === 0 ? <p className="muted">All products are well stocked.</p> : (
-            data.lowStockProducts.map((p) => (
-              <div key={p.id} className="summary-row">
-                <span>{p.name}</span>
-                <span className={p.stock === 0 ? "stock-out" : "stock-low"}>{p.stock === 0 ? "Out of stock" : `Only ${p.stock} remaining`}</span>
-              </div>
-            ))
-          )}
-          <Link href="/admin/products" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}>Manage stock</Link>
+        <div className="card stat-card">
+          <div className="value">{data.totalListings}</div>
+          <div className="label">Egg listings</div>
+          <p className="stat-sub">{data.activeListings} visible in the shop</p>
         </div>
+        <div className="card stat-card">
+          <div className="value">{data.totalStock.toLocaleString()}</div>
+          <div className="label">Eggs in stock</div>
+          <p className="stat-sub">{rwf(data.stockValue)} at list price</p>
+        </div>
+        <div className="card stat-card">
+          <div className="value">{data.totalOrders}</div>
+          <div className="label">Orders</div>
+          <p className="stat-sub">{data.pendingOrders} awaiting action</p>
+        </div>
+
+        <div className="card stat-card">
+          <div className="value">{data.totalStockIn.toLocaleString()}</div>
+          <div className="label">Eggs received</div>
+          <p className="stat-sub">All stock-in, ever</p>
+        </div>
+        <div className="card stat-card">
+          <div className="value">{data.totalStockOut.toLocaleString()}</div>
+          <div className="label">Eggs out</div>
+          <p className="stat-sub">Sales and removals</p>
+        </div>
+        <div className="card stat-card">
+          <div className="value">{rwf(data.totalSales)}</div>
+          <div className="label">Collected</div>
+          <p className="stat-sub">{rwf(data.pendingSales)} still owed</p>
+        </div>
+        <div className="card stat-card">
+          <div className="value">{data.movementCount}</div>
+          <div className="label">Inventory records</div>
+          <p className="stat-sub">Every movement, logged</p>
+        </div>
+      </div>
+
+      {/* ---- stock health + fulfilment ---- */}
+      <div className="grid grid-2 admin-panels">
         <div className="card">
-          <h3>Recent Orders</h3>
-          {data.recentOrders.length === 0 ? <p className="muted">No orders yet.</p> : (
-            data.recentOrders.map((o) => (
-              <div key={o.id} className="summary-row" style={{ alignItems: "center" }}>
-                <span><Link href={`/admin/orders?id=${o.id}`}><strong>#{o.orderNumber}</strong></Link><br /><small className="muted">{o.customerName} · {formatDate(o.createdAt)}</small></span>
-                <span style={{ textAlign: "right" }}>{rwf(o.total)}<br /><StatusBadge status={o.orderStatus} /></span>
-              </div>
-            ))
+          <h2 className="panel-title">Stock health</h2>
+          <ul className="admin-list">
+            <li><span>Low stock (5 or fewer)</span><strong>{data.lowStockCount}</strong></li>
+            <li><span>Out of stock</span><strong>{data.outOfStockCount}</strong></li>
+            <li><span>Delivered orders</span><strong>{data.deliveredOrders}</strong></li>
+            <li><span>Delivery / pickup</span><strong>{data.deliveries} / {data.pickups}</strong></li>
+            <li><span>Pickups at the counter</span><strong>{data.awaitingPickup}</strong></li>
+          </ul>
+          <Link href="/admin/inventory" className="link-arrow">Manage inventory</Link>
+        </div>
+
+        <div className="card">
+          <h2 className="panel-title">Collected, last 7 days</h2>
+          {days.length === 0 ? (
+            <p className="muted">No paid orders in the last week.</p>
+          ) : (
+            <div className="mini-chart" role="img" aria-label="Bar chart of daily collected revenue for the last 7 days">
+              {days.map((d) => (
+                <div key={d.day} className="mini-chart-bar">
+                  <div className="mini-chart-fill" style={{ height: `${Math.max(4, (d.total / peak) * 100)}%` }} />
+                  <span className="mini-chart-value">{d.total > 0 ? rwf(d.total) : ""}</span>
+                  <span className="mini-chart-label">{d.day.slice(5)}</span>
+                </div>
+              ))}
+            </div>
           )}
-          <Link href="/admin/orders" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}>All orders</Link>
+        </div>
+      </div>
+
+      {/* ---- recent activity ---- */}
+      <div className="grid grid-2 admin-panels">
+        <div className="card">
+          <h2 className="panel-title">Recent inventory activity</h2>
+          {data.recentMovements.length === 0 ? (
+            <p className="muted">
+              Nothing recorded yet. <Link href="/admin/inventory">Record stock in</Link> to start the ledger.
+            </p>
+          ) : (
+            <ul className="activity-list">
+              {data.recentMovements.map((m) => (
+                <li key={m.id}>
+                  <span className={`activity-dot ${m.direction}`} aria-hidden="true" />
+                  <div>
+                    <strong>
+                      {m.direction === "in" ? "+" : "−"}{m.quantity} · {m.productName}
+                    </strong>
+                    <small>{m.reason}{m.source ? ` · ${m.source}` : ""} · {formatDate(m.createdAt)}</small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="card">
+          <h2 className="panel-title">Recent orders</h2>
+          {data.recentOrders.length === 0 ? (
+            <p className="muted">No orders yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {data.recentOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td className="mono"><Link href={`/admin/orders?order=${o.id}`}>{o.orderNumber}</Link></td>
+                      <td>{o.customerName}</td>
+                      <td>{rwf(o.total)}</td>
+                      <td><StatusBadge status={o.orderStatus} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </>

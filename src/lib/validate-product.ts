@@ -7,6 +7,7 @@ export function readProductBody(body: Record<string, unknown>) {
   const stock = Number(body.stock);
   const discount = Number(body.discount || 0);
   const image = String(body.image || "").trim();
+  const category = String(body.category || "Chicken eggs").trim().slice(0, 60);
   const isAvailable = body.isAvailable === undefined ? true : Boolean(body.isAvailable);
 
   if (!name) return { error: "Product name is required." };
@@ -16,6 +17,6 @@ export function readProductBody(body: Record<string, unknown>) {
   if (discount < 0 || discount > 100) return { error: "Discount must be between 0 and 100." };
 
   return {
-    data: { name, description, price: Math.round(price), packageSize, stock, discount: Math.round(discount), image, isAvailable },
+    data: { name, description, price: Math.round(price), packageSize, category: category || "Chicken eggs", stock, discount: Math.round(discount), image, isAvailable },
   };
 }

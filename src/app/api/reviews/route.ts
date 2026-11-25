@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { reviews, orders, orderItems } from "@/db/schema";
 import { requireUser, errorResponse } from "@/lib/auth";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
+import { isPgError, UNIQUE_VIOLATION } from "@/lib/db-errors";
 
 export const POST = withApi(async ({ request, log }) => {
   const user = await requireUser(request);
@@ -52,7 +53,7 @@ export const POST = withApi(async ({ request, log }) => {
   } catch (error) {
     // The unique index (order, product, customer) is the real guard - two
     // concurrent submits cannot create duplicates.
-    if (typeof error === "object" && error && "code" in error && (error as { code: string }).code === "23505") {
+    if (isPgError(error, UNIQUE_VIOLATION)) {
       return errorResponse("You already reviewed this product for this order.");
     }
     log("review insert failed", error);

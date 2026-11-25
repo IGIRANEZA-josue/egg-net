@@ -14,6 +14,7 @@ export default function ProductForm({ product }: Props) {
     description: product?.description || "",
     price: product?.price?.toString() || "",
     packageSize: product?.packageSize?.toString() || "30",
+    category: product?.category || "Chicken eggs",
     stock: product?.stock?.toString() || "0",
     discount: product?.discount?.toString() || "0",
     image: product?.image || "",
@@ -60,6 +61,21 @@ export default function ProductForm({ product }: Props) {
         <div><label>Package size (number of eggs)</label><input type="number" min={1} value={form.packageSize} onChange={(e) => update("packageSize", e.target.value)} required /></div>
       </div>
       <div className="form-row">
+        <div>
+          <label htmlFor="product-category">Category</label>
+          <input
+            id="product-category"
+            list="product-category-options"
+            value={form.category}
+            onChange={(e) => update("category", e.target.value)}
+          />
+          <datalist id="product-category-options">
+            <option value="Chicken eggs" />
+            <option value="Duck eggs" />
+            <option value="Quail eggs" />
+            <option value="Other" />
+          </datalist>
+        </div>
         <div><label>Stock quantity</label><input type="number" min={0} value={form.stock} onChange={(e) => update("stock", e.target.value)} required /></div>
         <div><label>Product discount (%)</label><input type="number" min={0} max={100} value={form.discount} onChange={(e) => update("discount", e.target.value)} /></div>
       </div>

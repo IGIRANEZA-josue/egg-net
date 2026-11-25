@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orders, orderItems, products } from "@/db/schema";
+import { orders, orderItems, products, stockMovements } from "@/db/schema";
 import { requireAdmin, errorResponse } from "@/lib/auth";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
 import { parseId } from "@/lib/parse-id";
@@ -96,6 +96,22 @@ export const PUT = withApi<Params>(async ({ request, params, log }) => {
               .update(products)
               .set({ stock: sql`${products.stock} + ${item.quantity}`, updatedAt: new Date() })
               .where(eq(products.id, item.productId));
+          }
+          // The ledger has to show the eggs coming back, otherwise "received"
+          // and "distributed" would drift apart every time an order is cancelled.
+          if (items.length > 0) {
+            await tx.insert(stockMovements).values(
+              items.map((item) => ({
+                direction: "in" as const,
+                productId: item.productId,
+                quantity: item.quantity,
+                reason: "Order cancelled",
+                source: `Order ${current.orderNumber}`,
+                note: reason,
+                orderId: current.id,
+                createdBy: admin.id,
+              }))
+            );
           }
         }
       }
