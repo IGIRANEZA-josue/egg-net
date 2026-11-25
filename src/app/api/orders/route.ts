@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orders, orderItems, products } from "@/db/schema";
+import { orders, orderItems, products, stockMovements } from "@/db/schema";
 import { requireUser, requireAdmin, errorResponse } from "@/lib/auth";
 import {
   getActivePromotion,
@@ -15,6 +15,7 @@ import { decideFulfilment, PICKUP } from "@/lib/fulfilment";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
 import { checkoutSchema, firstIssue } from "@/lib/validation";
 import { parsePagination } from "@/lib/pagination";
+import { isPgError, UNIQUE_VIOLATION } from "@/lib/db-errors";
 
 // Thrown inside the transaction; mapped to a 409 with a shopping-friendly message.
 class InsufficientStockError extends Error {
@@ -175,6 +176,20 @@ export const POST = withApi(async ({ request, log }) => {
         if (!updated) throw new InsufficientStockError(line.productName, 0);
       }
 
+      // Ledger rows for the same movement. Written inside this transaction so a
+      // failed checkout cannot leave an explanation for stock that never moved.
+      await tx.insert(stockMovements).values(
+        lines.map((line) => ({
+          direction: "out" as const,
+          productId: line.productId,
+          quantity: line.quantity,
+          reason: "Customer order",
+          source: `Order ${order.orderNumber}`,
+          orderId: order.id,
+          createdBy: user.id,
+        }))
+      );
+
       return order;
     });
 
@@ -183,7 +198,7 @@ export const POST = withApi(async ({ request, log }) => {
   } catch (error) {
     if (error instanceof InsufficientStockError) return errorResponse(error.message, 409);
     // A concurrent request with the same idempotency key lost the unique race.
-    if (typeof error === "object" && error && "code" in error && (error as { code: string }).code === "23505") {
+    if (isPgError(error, UNIQUE_VIOLATION)) {
       log("idempotency conflict", error);
       if (idempotencyKey) {
         const [existing] = await db

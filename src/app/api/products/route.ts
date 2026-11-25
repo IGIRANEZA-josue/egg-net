@@ -7,6 +7,7 @@ import { products } from "@/db/schema";
 import { requireAdmin, errorResponse } from "@/lib/auth";
 import { readProductBody } from "@/lib/validate-product";
 import { withApi, readJson, ApiError } from "@/lib/api-handler";
+import { stockIn } from "@/lib/inventory";
 import { parsePagination } from "@/lib/pagination";
 
 export const GET = withApi(async ({ request }) => {
@@ -59,7 +60,29 @@ export const POST = withApi(async ({ request, log }) => {
   if (result.error || !result.data) return errorResponse(result.error || "Invalid data.");
 
   try {
-    const [product] = await db.insert(products).values(result.data).returning();
+    const product = await db.transaction(async (tx) => {
+      // Insert with zero stock and let the ledger add the opening quantity.
+      // Inserting it WITH stock and then calling stockIn would count the same
+      // eggs twice - the listing would open at double the number entered.
+      const opening = result.data.stock;
+      const [created] = await tx
+        .insert(products)
+        .values({ ...result.data, stock: 0 })
+        .returning();
+
+      if (opening > 0) {
+        await stockIn(tx, {
+          productId: created.id,
+          quantity: opening,
+          reason: "Opening stock",
+          source: "New listing",
+          createdBy: admin.id,
+        });
+      }
+
+      const [fresh] = await tx.select().from(products).where(eq(products.id, created.id));
+      return fresh ?? created;
+    });
     return NextResponse.json({ product }, { status: 201 });
   } catch (error) {
     log("product create failed", error);

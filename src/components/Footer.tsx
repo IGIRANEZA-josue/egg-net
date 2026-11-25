@@ -1,6 +1,7 @@
 // Footer: masthead style with mono microtype.
-// Three columns on desktop, stacking on a phone. There is no admin entry point
-// here: /admin is reachable by URL for staff who know it, and is not advertised.
+// Three columns on desktop, stacking on a phone. The last column ends with a
+// single, independent "Admin" link - not inside a dropdown - pointing at the
+// staff sign-in page.
 import Link from "next/link";
 import EggMark from "@/components/EggMark";
 
@@ -41,6 +42,9 @@ export default function Footer() {
           <h3 id="footer-info" className="footer-heading">EggHub</h3>
           <ul>
             {INFO_LINKS.map((l) => <li key={l.href}><Link href={l.href}>{l.label}</Link></li>)}
+            {/* Staff entry point. Deliberately its own link, in this list, so it
+                is never hidden behind a menu or a hover. */}
+            <li><Link href="/admin/login" className="footer-admin-link">Admin</Link></li>
           </ul>
         </nav>
 

@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orders, users, products } from "@/db/schema";
+import { orders, users, products, stockMovements } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { withApi } from "@/lib/api-handler";
 
@@ -27,6 +27,9 @@ export const GET = withApi(async ({ request }) => {
     lowStock,
     [userCounts],
     [fulfilmentCounts],
+    [eggStats],
+    [ledgerTotals],
+    movements,
   ] = await Promise.all([
     // "Collected" is money actually received. Before this, the dashboard summed
     // every non-cancelled order regardless of paymentStatus - including mock
@@ -79,6 +82,43 @@ export const GET = withApi(async ({ request }) => {
       })
       .from(orders)
       .where(notCancelled),
+    // Egg stock across every live listing: the number the shop actually has.
+    db
+      .select({
+        totalStock: sql<number>`coalesce(sum(${products.stock}), 0)::int`,
+        listings: sql<number>`count(*)::int`,
+        activeListings: sql<number>`count(*) filter (where ${products.isAvailable})::int`,
+        lowStock: sql<number>`count(*) filter (where ${products.stock} <= ${LOW_STOCK_LIMIT})::int`,
+        outOfStock: sql<number>`count(*) filter (where ${products.stock} = 0)::int`,
+        stockValue: sql<number>`coalesce(sum(${products.stock} * ${products.price}), 0)::int`,
+      })
+      .from(products)
+      .where(isNull(products.deletedAt)),
+    // Lifetime movement through the ledger, not just today.
+    db
+      .select({
+        totalIn: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'in' then ${stockMovements.quantity} else 0 end), 0)::int`,
+        totalOut: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' then ${stockMovements.quantity} else 0 end), 0)::int`,
+        entries: sql<number>`count(*)::int`,
+      })
+      .from(stockMovements),
+    // The activity feed: newest inventory movements with the product name.
+    db
+      .select({
+        id: stockMovements.id,
+        direction: stockMovements.direction,
+        quantity: stockMovements.quantity,
+        reason: stockMovements.reason,
+        source: stockMovements.source,
+        createdAt: stockMovements.createdAt,
+        productName: products.name,
+        orderNumber: orders.orderNumber,
+      })
+      .from(stockMovements)
+      .innerJoin(products, eq(stockMovements.productId, products.id))
+      .leftJoin(orders, eq(stockMovements.orderId, orders.id))
+      .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
+      .limit(8),
   ]);
 
   // Last 7 days of collected revenue, bucketed in Rwanda local time.
@@ -115,5 +155,16 @@ export const GET = withApi(async ({ request }) => {
     deliveries: fulfilmentCounts?.deliveries ?? 0,
     pickups: fulfilmentCounts?.pickups ?? 0,
     awaitingPickup: fulfilmentCounts?.awaitingPickup ?? 0,
+    // Eggs and inventory.
+    totalStock: eggStats?.totalStock ?? 0,
+    totalListings: eggStats?.listings ?? 0,
+    activeListings: eggStats?.activeListings ?? 0,
+    lowStockCount: eggStats?.lowStock ?? 0,
+    outOfStockCount: eggStats?.outOfStock ?? 0,
+    stockValue: eggStats?.stockValue ?? 0,
+    totalStockIn: ledgerTotals?.totalIn ?? 0,
+    totalStockOut: ledgerTotals?.totalOut ?? 0,
+    movementCount: ledgerTotals?.entries ?? 0,
+    recentMovements: movements,
   });
 });

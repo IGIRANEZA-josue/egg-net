@@ -13,6 +13,7 @@ export type Product = {
   description: string | null;
   price: number;
   packageSize: number;
+  category?: string;
   stock: number;
   image: string | null;
   isAvailable: boolean;

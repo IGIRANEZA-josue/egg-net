@@ -29,6 +29,13 @@
       "when": 1795513700003,
       "tag": "0003_order_fulfilment",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795513700004,
+      "tag": "0004_inventory_and_account_status",
+      "breakpoints": true
     }
   ]
 }
